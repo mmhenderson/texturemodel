@@ -1,15 +1,9 @@
 import numpy as np
 import torch
 import time
-import os
-import h5py
-import gc
-from collections import OrderedDict
 import torch.nn as nn
 import pyrtools as pt
 from utils import numpy_utils, torch_utils, texture_utils, prf_utils, default_paths
-pyramid_texture_feat_path = default_paths.pyramid_texture_feat_path
-from sklearn import decomposition
 
 feature_types_all = ['pixel_stats', 'mean_magnitudes', 'mean_realparts', \
                      'marginal_stats_lowpass_recons', 'variance_highpass_resid', \
