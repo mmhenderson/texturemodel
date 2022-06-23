@@ -5,6 +5,11 @@
 #     "texturemodel" (main project folder with all our code)
 #     "features" (precomputed features extracted for each pRF)
 root = '/user_data/mmhender/'
+project_name = 'texturemodel'
+
+# if using a scratch directory local to the node i'm on, what is its path
+# (not used often)
+root_localnode = '/scratch/mmhender/'
 
 # Set path to the full NSD data repository (this is where the beta weights are stored)
 # http://naturalscenesdataset.org/
