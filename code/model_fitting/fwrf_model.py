@@ -581,8 +581,9 @@ class encoding_model():
         self.trials_use_each_prf_val = kwargs['trials_use_each_prf_val'] \
             if 'trials_use_each_prf_val' in kwargs.keys() else None
         
-        self.__init_for_val__(voxel_data_val, image_inds_val)
-        
+        print('initializing for validation'); sys.stdout.flush()
+        self.__init_for_val__(voxel_data_val, image_inds_val); 
+        print('done initializing for validation'); sys.stdout.flush()
         
         with torch.no_grad(): # make sure local gradients are off to save memory
         
@@ -598,7 +599,8 @@ class encoding_model():
                     print('No voxels have this pRF as their best model, skipping it.')
                     continue
                     
-                print('Getting features for prf %d of %d'%(mm, self.n_prfs))
+                print('Getting features for prf %d of %d'%(mm, self.n_prfs)); 
+                sys.stdout.flush()
 
                 self.__val_one_prf__(mm)   
           
@@ -620,6 +622,7 @@ class encoding_model():
         self.n_val_trials = len(self.image_inds_val)
         assert(self.voxel_data_val.shape[1]==self.n_voxels)
 
+        print('about to preallocate arrays'); sys.stdout.flush()
         # val_cc is the correlation coefficient bw real and predicted responses across trials, for each voxel.
         if self.shuffle_data:
             self.val_cc  = np.zeros(shape=(self.n_voxels, self.n_partial_versions, self.n_shuff_iters), \
@@ -639,26 +642,30 @@ class encoding_model():
         # Need these for later analyses.
         self.pred_voxel_data = np.full(fill_value=0, shape=(self.n_val_trials, self.n_voxels, self.n_partial_versions), \
                                   dtype=self.dtype)
-        
+        print('made arrays'); sys.stdout.flush()
         if self.shuffle_data:
             # prep for permutation test evaluation, if doing 
             if self.trials_use_each_prf_val is not None:
                 raise ValueError('cannot specify a trial subset when also doing permutation test')
             if self.shuff_rnd_seed is not None:
-                np.random.seed(self.shuff_rnd_seed)          
+                np.random.seed(self.shuff_rnd_seed)    
+            print('making shuffle inds')
             self.shuff_inds_val = np.zeros((self.n_val_trials,self.n_shuff_iters),dtype=int)
             for xx in range(self.n_shuff_iters):
                 self.shuff_inds_val[:,xx] = np.random.permutation(self.n_val_trials)
                 
     def __val_one_prf__(self, mm):
 
+        
         voxels_to_do = np.where(self.best_prf_models==mm)[0]  
         n_voxel_batches = int(np.ceil(len(voxels_to_do)/self.voxel_batch_size))
 
+        print('about to load features') sys.stdout.flush()
         # all_feat_concat is size [ntrials x nfeatures] (where nfeatures can be <max_features)
         # feature_inds_defined is [max_features]
         all_feat_concat, feature_inds_defined = self.feature_loader.load(self.image_inds_val, mm, fitting_mode=False)
-
+        print('loaded features'); sys.stdout.flush()
+              
         if self.zscore:
             # using mean and std that were computed on training set during fitting - keeping 
             # these pars constant here seems to improve fits. 
@@ -669,9 +676,10 @@ class encoding_model():
 
         # saving all these features for use later on
         self.features_each_prf[:,feature_inds_defined,mm] = all_feat_concat
+        all_feat_concat = None;
+        gc.collect()
         
-        # self.feature_loader.clear_big_features()
-
+              
         # get data ready to do validation
         features_full = self.features_each_prf[:,:,mm:mm+1]
 
@@ -690,12 +698,14 @@ class encoding_model():
             voxel_data_use = self.voxel_data_val
 
         print('prf %d: using %d validation set trials'%(mm, voxel_data_use.shape[0]))
-
+        sys.stdout.flush()
+        
         # Next looping over all voxels with this same pRF, in batches        
         for vv in range(n_voxel_batches):
 
             print('Getting predictions for voxel batch %d of %d'%(vv, n_voxel_batches))
-
+            sys.stdout.flush()
+        
             vinds = np.arange(self.voxel_batch_size*vv, np.min([self.voxel_batch_size*(vv+1), len(voxels_to_do)]))
             voxel_batch_inds = voxels_to_do[vinds]
            
@@ -709,12 +719,14 @@ class encoding_model():
             for pp in range(self.n_partial_versions):
 
                 print('\nEvaluating version %d of %d: %s'%(pp, self.n_partial_versions, self.partial_version_names[pp]))
-
+                sys.stdout.flush()
+        
                 # masks describes the indices of the features that are included in this partial model
                 # n_features_max in length
                 features_to_use = self.masks[0:self.max_features,pp]==1
                 print('Includes %d features'%np.sum(features_to_use))
-
+                sys.stdout.flush()
+        
                 # Take out the relevant features now
                 features = np.tile(features_full[:,features_to_use,:], [1,1,len(voxel_batch_inds)])
                 # Note there may be some zeros in this matrix, if we used fewer than the 

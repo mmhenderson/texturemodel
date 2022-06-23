@@ -9,6 +9,7 @@ import os
 import time
 import numpy as np
 import argparse
+import gc
 
 # import custom modules
 from utils import nsd_utils, roi_utils, default_paths

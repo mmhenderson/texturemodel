@@ -70,11 +70,11 @@ class combined_feature_loader:
 
         return masks, names
         
-    def load(self, images, prf_model_ind, fitting_mode = True):
+    def load(self, images, prf_model_index, fitting_mode = True):
 
         for mi, module in enumerate(self.modules):
             
-            features, inds = module.load(images, prf_model_ind, fitting_mode)
+            features, inds = module.load(images, prf_model_index, fitting_mode)
             
             if mi==0:
                 all_features_concat = features
