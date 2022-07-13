@@ -197,3 +197,17 @@ def bin_ydata_by_xdata(xdata, ydata, n_bins, linear_bins=True, remove_nans=True,
         to_return += ybin_std,
         
     return to_return
+
+
+def list_all_combs(values, n_levels):
+    
+    values = np.squeeze(values)
+    
+    for ll in range(n_levels):
+        if ll==0:
+            array = values[:,None]
+        else:
+            array = np.concatenate([np.repeat(array, len(values), 0), \
+                                np.tile(values[:,None], [array.shape[0],1])], axis=1)
+
+    return array

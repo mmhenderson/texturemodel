@@ -32,7 +32,9 @@ for fi in files:
     
 folder = 'feature_extraction'
 include_names = ['fwrf_features.py', 'merge_features.py','pca_feats.py', \
-                 'extract_pyramid_texture_features.py', 'texture_statistics_pyramid.py', '__init__.py']
+                 'extract_pyramid_texture_features.py', 'texture_statistics_pyramid.py', 
+                 'extract_alexnet_features.py', 'extract_clip_features.py', \
+                 'semantic_features.py', 'texture_feature_utils.py', '__init__.py']
 
 files = include_names
 

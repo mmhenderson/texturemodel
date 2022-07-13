@@ -4,21 +4,10 @@ import time
 import torch.nn as nn
 import pyrtools as pt
 from utils import numpy_utils, torch_utils, texture_utils, prf_utils, default_paths
+from feature_extraction import texture_feature_utils
 
-feature_types_all = ['pixel_stats', 'mean_magnitudes', 'mean_realparts', \
-                     'marginal_stats_lowpass_recons', 'variance_highpass_resid', \
-                     'magnitude_feature_autocorrs', 'lowpass_recon_autocorrs', \
-                     'highpass_resid_autocorrs', \
-                     'magnitude_within_scale_crosscorrs', 'real_within_scale_crosscorrs', \
-                     'magnitude_across_scale_crosscorrs', 'real_imag_across_scale_crosscorrs', \
-                     'real_spatshift_within_scale_crosscorrs', 'real_spatshift_across_scale_crosscorrs']
-feature_type_dims_all = [6,16,16,10,1,272,73,25,24,24,48,96,10,20]
-feature_names_simple = ['marginal', 'mean-magnitude', 'mean-real', \
-                        'marginal-lowpass', 'marginal-highpass', \
-                        'magnitude-autocorr', 'lowpass-autocorr', 'highpass-autocorr', \
-                        'magnitude-cross-orient', 'real-cross-orient', \
-                        'magnitude-cross-scale', 'real-cross-scale', \
-                        'lowpass-real-within-scale', 'lowpass-real-cross-scale']
+feature_types_all = texture_feature_utils.feature_type_names_raw
+feature_type_dims_all = texture_feature_utils.feature_type_dims_raw
 
 class texture_feature_extractor(nn.Module):
     

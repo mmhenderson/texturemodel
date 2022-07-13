@@ -11,7 +11,7 @@ import pandas as pd
 from datetime import datetime
 
 # import custom modules
-from feature_extraction import gabor_feature_extractor, fwrf_features, semantic_features, merge_features
+from feature_extraction import fwrf_features, semantic_features, merge_features
 from utils import prf_utils, default_paths, nsd_utils
 from model_fitting import saved_fit_paths
 
@@ -77,13 +77,13 @@ def get_full_save_name(args):
                 model_name += '_ridge'
             else:
                 model_name += '_OLS'
-            model_name += '_%dori_%dsf'%(args.n_ori_pyr, args.n_sf_pyr)        
-            if args.use_pca_pyr_feats_hl:
-                model_name += '_pca_HL' 
+            model_name += '_%dori_%dsf'%(args.n_ori_pyr, args.n_sf_pyr)  
+            if args.pyr_pca_type is not None:
+                model_name += '_%s'%args.pyr_pca_type
+              
             if not args.group_all_hl_feats:
                 model_name += '_allsubsets'
-            if args.match_ncomp_prfs:
-                model_name += '_match_ncomp_allprfs'
+           
                 
         elif 'gabor_solo' in ft:     
             fitting_types += [ft]
@@ -145,6 +145,11 @@ def get_full_save_name(args):
             
     if args.shuffle_data:
         model_name += '_permutation_test'
+    if args.bootstrap_data:
+        if args.boot_val_only:
+            model_name += '_bootstrap_test_val'        
+        else:
+            model_name += '_bootstrap_test'
         
     print(fitting_types)
     print(model_name)
@@ -569,15 +574,13 @@ def make_feature_loaders(args, fitting_types, vi):
                                                             which_prf_grid=args.which_prf_grid, \
                                                             feature_type='pyramid_texture',\
                                                             n_ori=args.n_ori_pyr, n_sf=args.n_sf_pyr,\
-                                                            include_ll=True, include_hl=True,\
-                                                            use_pca_feats_hl = args.use_pca_pyr_feats_hl,\
+                                                            pca_type=args.pyr_pca_type,\
                                                             do_varpart=args.do_pyr_varpart,\
                                                             group_all_hl_feats=args.group_all_hl_feats, \
-                                                            match_ncomp_prfs=args.match_ncomp_prfs)       
+                                                            include_solo_models=False)       
             fe.append(feat_loader)
             fe_names.append(ft)
-            pyramid_feature_info = [feat_loader.feature_column_labels, feat_loader.feature_types_include]
-
+            
         elif 'sketch_tokens' in ft:
             feat_loader = fwrf_features.fwrf_feature_loader(subject=args.subject,\
                                                             which_prf_grid=args.which_prf_grid, \
@@ -666,8 +669,8 @@ def make_feature_loaders(args, fitting_types, vi):
 
     # Now combine subsets of features into a single module
     if len(fe)>1:
-        feat_loader_full = merge_features.combined_feature_loader(fe, fe_names, do_varpart = args.do_varpart, \
-                                                                 include_solo_models=args.include_solo_models)
+        feat_loader_full = merge_features.combined_feature_loader(fe, fe_names, do_varpart = args.do_varpart,\
+                                                                  include_solo_models=args.include_solo_models)
     else:
         feat_loader_full = fe[0]
         

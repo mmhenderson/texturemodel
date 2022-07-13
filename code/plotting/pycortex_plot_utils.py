@@ -32,13 +32,18 @@ def maps_to_volumes(subject, maps, names, cmaps=None, mins=None, maxes=None, \
         cmaps = ['PuBu' for ll in range(len(names))]
     elif len(cmaps)==1:
         cmaps = [cmaps[0] for ll in range(len(names))]  
-    
+    if vox2plot is None:
+        vox2plot = [None for ll in range(len(names))]
+    elif isinstance(vox2plot, np.ndarray):
+        vox2plot = [vox2plot for ll in range(len(names))]
+    else:
+        assert(len(vox2plot)==len(maps))
     for ni, name in enumerate(names):
         
         map_thresh = copy.deepcopy(maps[ni])
 
-        if vox2plot is not None: 
-            map_thresh[~vox2plot] = np.nan
+        if vox2plot[ni] is not None: 
+            map_thresh[~vox2plot[ni]] = np.nan
 
         volumes[name] = cortex.Volume(data = get_full_volume(map_thresh, voxel_mask, nii_shape), \
                                            cmap=cmaps[ni], subject=substr, \

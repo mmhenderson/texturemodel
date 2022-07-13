@@ -2,15 +2,44 @@ import numpy as np
 import scipy.stats
 import warnings
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+import statsmodels.stats.multitest
 
-
-def get_shared_unique_var(combined, just_a, just_b):
+def get_shared_unique_var(combined, just_a, just_b, \
+                          remove_bad_voxels = False, \
+                          convert_to_prop=False, \
+                          enforce_prop_range=False):
+    
+    """
+    Function for computing unique/shared variance based on R2 values for 
+    full and partial models. 
+    Input [R2 combined, R2 A solo, R2 B solo]
+    Returns [shared variance, unique A, unique B]
+    """
     
     unique_a = combined - just_b
     unique_b = combined - just_a
     shared_ab = just_a + just_b - combined
-   
-    return shared_ab, unique_a, unique_b
+    
+    vals = np.array([shared_ab, unique_a, unique_b]).T
+    
+    if remove_bad_voxels:
+        # Sometimes this analysis results in negative values, or values that exceed the maximum variance
+        # of the combined model. 
+        # Can choose here to simply ignore voxels that have bad result, return NaNs.
+        bad_inds = np.any(vals<0, axis=1) | np.any(vals>combined[:,None], axis=1)
+        vals[bad_inds,:] = np.nan
+        
+    if convert_to_prop:
+        # optionally convert the R2_shared and R2_unique values into a proportion
+        # of combined model R2.
+        vals /= np.tile(combined[:,None], [1,3])
+        if enforce_prop_range:
+            # force all the proportions to lie between 0 and 1.
+            # note that this can make the sum over proportions not exactly=1
+            # but it prevents negative var expl values.
+            vals = np.maximum(np.minimum(vals, 1), 0)
+
+    return vals[:,0], vals[:,1], vals[:,2]
 
 def get_r2(actual,predicted):
     """
@@ -336,6 +365,22 @@ def paired_ttest_nonpar(vals1, vals2, n_iter=1000, rndseed=None):
     
     return pval_twotailed, real_diff
 
+def fdr_keepshape(pvals, alpha=0.05, method='indep'):
+    
+    """
+    This is a wrapper for the fdr function in statsmodels, allows
+    for entering a 2D array and FDR correct all values together.
+    Returns arrays same shape as original.
+    """
+    orig_shape = pvals.shape
+    pvals_reshaped = pvals.ravel()
+    
+    pvals_fdr, masked_fdr = statsmodels.stats.multitest.fdrcorrection(pvals_reshaped, alpha=alpha, method=method)
+    
+    pvals_fdr = np.reshape(pvals_fdr, orig_shape)
+    masked_fdr = np.reshape(masked_fdr, orig_shape)
+    
+    return pvals_fdr, masked_fdr
 
 def fdr(pvals, alpha=None, parametric=True):
     

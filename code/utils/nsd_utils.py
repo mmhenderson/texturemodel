@@ -309,9 +309,6 @@ def get_data_splits(subject, sessions=[0], voxel_mask=None, \
         # can't have session inds here because betas are averaged over multiple sessions
         session_inds=None
         
-    if shuffle_images:
-        print('\nShuffling image order')
-        image_order = image_order[np.random.permutation(np.arange(len(image_order)))]
    
     # Get indices to split into training/validation set now
     subj_df = get_subj_df(subject)
@@ -320,10 +317,18 @@ def get_data_splits(subject, sessions=[0], voxel_mask=None, \
     val_inds = shared_1000_inds
     
     is_trn, is_holdout, is_val = load_image_data_partitions(subject)
+    is_trn = is_trn[image_order]
     is_val = is_val[image_order]
     is_holdout = is_holdout[image_order]
     assert(np.all(is_val==val_inds))
     holdout_inds = is_holdout
+    
+    if shuffle_images:
+        print('\nShuffling image order')
+        # shuffle each data partition separately
+        for inds in [is_trn, is_holdout, is_val]:
+            values = image_order[inds]
+            image_order[inds] = values[np.random.permutation(len(values))]      
 
     return voxel_data, image_order, val_inds, holdout_inds, session_inds
    

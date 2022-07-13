@@ -6,7 +6,7 @@ import gc
 
 import torch
 
-from utils import torch_utils, stats_utils
+from utils import torch_utils, stats_utils, numpy_utils
 
 """
 General code for fitting a 'feature weighted receptive field' model to fmri data - looping over many candidate pRF 
@@ -22,11 +22,7 @@ class encoding_model():
                  **kwargs):
         
         self.feature_loader = feature_loader
-        
-        default_lambdas = np.logspace(np.log(0.01),np.log(10**5+0.01),9, \
-                                      dtype=np.float32, base=np.e) - 0.01
-        self.lambdas = kwargs['lambdas'] if 'lambdas' in kwargs.keys() else default_lambdas
-        
+
         self.best_model_each_voxel = kwargs['best_model_each_voxel'] \
             if 'best_model_each_voxel' in kwargs.keys() else None
         # are we fitting prfs now, or were they done before?
@@ -34,6 +30,7 @@ class encoding_model():
         
         self.zscore = kwargs['zscore'] if 'zscore' in kwargs.keys() else True
         self.add_bias = kwargs['add_bias'] if 'add_bias' in kwargs.keys() else True
+        self.do_corrcoef = kwargs['do_corrcoef'] if 'do_corrcoef' in kwargs.keys() else True
         self.voxel_batch_size = kwargs['voxel_batch_size'] \
             if 'voxel_batch_size' in kwargs.keys() else 100
         self.sample_batch_size = kwargs['sample_batch_size'] \
@@ -41,23 +38,6 @@ class encoding_model():
         self.prfs_fit_mask = kwargs['prfs_fit_mask'] \
             if 'prfs_fit_mask' in kwargs.keys() else None
         
-        self.shuffle_data = kwargs['shuffle_data'] \
-            if 'shuffle_data' in kwargs.keys() else False
-        self.n_shuff_iters = kwargs['n_shuff_iters'] \
-            if 'n_shuff_iters' in kwargs.keys() else None
-        self.shuff_rnd_seed = kwargs['shuff_rnd_seed'] \
-            if 'shuff_rnd_seed' in kwargs.keys() else None
-        self.shuff_batch_size = kwargs['shuff_batch_size'] \
-            if 'shuff_batch_size' in kwargs.keys() else None
-        n_shuff_batches = int(np.ceil(self.n_shuff_iters/self.shuff_batch_size))
-        self.shuff_batch_inds = [np.arange(bb*self.shuff_batch_size, \
-                                       np.min([(bb+1)*self.shuff_batch_size, self.n_shuff_iters])) \
-                                       for bb in range(n_shuff_batches)]
-            
-        if self.shuffle_data:
-            # we only do the permutation analysis once pRFs are fit
-            assert(not self.fitting_prfs_now)
-            
         self.device = kwargs['device'] if 'device' in kwargs.keys() else torch.device('cpu:0')
         self.dtype = kwargs['dtype'] if 'dtype' in kwargs.keys() else np.float32
         self.debug = kwargs['debug'] if 'debug' in kwargs.keys() else False
@@ -74,22 +54,100 @@ class encoding_model():
         # Decide whether to do any "partial" versions of the models (leaving out subsets of features)
         # Purpose is for variance partition
         self.masks, self.partial_version_names = self.feature_loader.get_partial_versions()
+        self.masks = self.masks.T.astype(bool)
         self.n_partial_versions = len(self.partial_version_names) # will be one if skipping varpart
     
+        
         if self.add_bias:
             # including intercept 
             self.masks = np.concatenate([self.masks, \
-                             np.ones([self.masks.shape[0],1])], axis=1) 
-        self.masks = np.transpose(self.masks)
+                             np.ones((1,self.n_partial_versions), dtype=bool)], axis=0) 
         # masks is [n_features_total (including intercept) x n_partial_versions]
+        
+        self.__init_lambda_vecs__(kwargs)
         
         self.n_prfs = self.feature_loader.n_prfs
         if self.prfs_fit_mask is not None:
             assert(len(self.prfs_fit_mask)==self.n_prfs)
             # only use this in from-scratch pRF fitting
             assert(self.fitting_prfs_now)
+        
+        # do perm test?
+        self.shuffle_data = kwargs['shuffle_data'] \
+            if 'shuffle_data' in kwargs.keys() else False
+        # do bootstrap? (resample w replacement)        
+        self.bootstrap_data = kwargs['bootstrap_data'] \
+            if 'bootstrap_data' in kwargs.keys() else False
+        
+        if self.shuffle_data:
+            self.__init_shuffle__(kwargs)
+        if self.bootstrap_data:
+            self.__init_bootstrap__(kwargs)
+             
             
+    def __init_lambda_vecs__(self, kwargs):
+        
+        default_lambdas = np.logspace(np.log(0.01),np.log(10**5+0.01),9, \
+                                      dtype=np.float32, base=np.e) - 0.01
+        self.lambdas = kwargs['lambdas'] \
+            if 'lambdas' in kwargs.keys() else default_lambdas
+        self.set_lambda_per_group = kwargs['set_lambda_per_group'] \
+            if 'set_lambda_per_group' in kwargs.keys() else False
+
+        if self.set_lambda_per_group:  
+            # allow different "groups" of features to have their own lambda values
+            self.feature_group_inds = self.feature_loader.get_feature_group_inds()
+        else:
+            # use a single lambda for all features
+            self.feature_group_inds = np.zeros((self.max_features,),dtype=int)
             
+        un, n_each = np.unique(self.feature_group_inds, return_counts=True)
+        n_feature_groups = len(un)
+        lambda_combs = numpy_utils.list_all_combs(self.lambdas, n_feature_groups)
+        lambda_vecs = np.concatenate([np.tile(lambda_combs[:,ii:ii+1], [1,n_each[ii]]) \
+                                      for ii in range(n_feature_groups)], axis=1 )
+        assert(lambda_vecs.shape[1]==self.feature_loader.max_features)
+        
+        if self.add_bias:
+            # add a zero for the intercept feature
+            lambda_vecs = np.concatenate([lambda_vecs, \
+                                          np.zeros((lambda_vecs.shape[0],1))], axis=1)
+          
+        self.lambda_vectors = [[] for pp in range(self.n_partial_versions)]
+        for pp in range(self.n_partial_versions):
+            
+            vecs = lambda_vecs[:,self.masks[:,pp]]
+            unrows, inds = np.unique(vecs, axis=0, return_index=True)
+           
+            # remove any duplicate rows, will speed things up later on
+            self.lambda_vectors[pp] = lambda_vecs[inds,:]
+                   
+          
+    def __init_shuffle__(self, kwargs):
+        
+        
+        self.n_shuff_iters = kwargs['n_shuff_iters'] \
+            if 'n_shuff_iters' in kwargs.keys() else None
+        self.shuff_rnd_seed = kwargs['shuff_rnd_seed'] \
+            if 'shuff_rnd_seed' in kwargs.keys() else None
+        self.shuff_batch_size = kwargs['shuff_batch_size'] \
+            if 'shuff_batch_size' in kwargs.keys() else None
+        n_shuff_batches = int(np.ceil(self.n_shuff_iters/self.shuff_batch_size))
+        self.shuff_batch_inds = [np.arange(bb*self.shuff_batch_size, \
+                                       np.min([(bb+1)*self.shuff_batch_size, self.n_shuff_iters])) \
+                                       for bb in range(n_shuff_batches)]
+        assert(not self.bootstrap_data and not self.fitting_prfs_now)
+        
+    def __init_bootstrap__(self, kwargs):
+        
+        self.n_boot_iters = kwargs['n_boot_iters'] \
+            if 'n_boot_iters' in kwargs.keys() else None
+        self.boot_rnd_seed = kwargs['boot_rnd_seed'] \
+            if 'boot_rnd_seed' in kwargs.keys() else None
+        self.boot_val_only = kwargs['boot_val_only'] \
+            if 'boot_val_only' in kwargs.keys() else False
+        assert(not self.shuffle_data and not self.fitting_prfs_now)
+        
     
     def fit(self, \
             image_inds_trn, \
@@ -110,11 +168,6 @@ class encoding_model():
         
         # clear any stored features from feature loader's memory    
         self.feature_loader.clear_big_features()
-        
-        start_time = time.time()
-        vox_loop_time = 0
-
-        print ('---------------------------------------\n')
         
         with torch.no_grad(): # make sure local gradients are off to save memory
                 
@@ -193,6 +246,11 @@ class encoding_model():
                                              n_params, \
                                              self.n_partial_versions, \
                                              self.n_shuff_iters), dtype=self.dtype)
+        elif self.bootstrap_data and not self.boot_val_only:
+            self.best_w_params = np.zeros(shape=(self.n_voxels, \
+                                             n_params, \
+                                             self.n_partial_versions, \
+                                             self.n_boot_iters), dtype=self.dtype)
         else:
             self.best_w_params = np.zeros(shape=(self.n_voxels, \
                                                  n_params, \
@@ -230,6 +288,20 @@ class encoding_model():
                 self.shuff_inds_trn[:,xx] = np.random.permutation(n_trn)
                 self.shuff_inds_out[:,xx] = np.random.permutation(n_out)
             
+        if self.bootstrap_data and not self.boot_val_only:
+            # prep for bootstrap resampling, if doing
+            if self.trials_use_each_prf_trn is not None:
+                raise ValueError('cannot specify a trial subset when also doing bootstrap')
+            if self.boot_rnd_seed is not None:
+                np.random.seed(self.boot_rnd_seed)
+            n_trn = len(image_inds_trn)
+            n_out = len(image_inds_holdout)
+            self.boot_inds_trn = np.zeros((n_trn,self.n_boot_iters),dtype=int)
+            self.boot_inds_out = np.zeros((n_out,self.n_boot_iters),dtype=int)
+            for xx in range(self.n_boot_iters):
+                self.boot_inds_trn[:,xx] = np.random.choice(np.arange(n_trn), n_trn, replace=True)
+                self.boot_inds_out[:,xx] = np.random.choice(np.arange(n_out), n_out, replace=True)
+            
     def __fit_one_prf__(self, mm):
 
         # Initialize some variables for this pRF
@@ -246,7 +318,7 @@ class encoding_model():
             # voxels whose best pRF was the current one.
             voxels_to_fit = np.where(self.best_model_each_voxel==mm)[0]
             full_model_improved = None
-            
+         
         if len(voxels_to_fit)==0:
             print('No voxels have this pRF saved as their best model, skipping it.')
             return
@@ -255,8 +327,7 @@ class encoding_model():
 
         # Load features for the desired pRF, across all images (both train/holdout)       
         features, feature_inds_defined = self.feature_loader.load(self.image_inds_concat, \
-                                                                  prf_model_index = mm, \
-                                                                  fitting_mode=True)
+                                                                  prf_model_index = mm)
         # Features is size [n_trials x n_features_actual]
         # n_features_actual may be less than self.max_features; 
         # because max_features is the largest number possible for any pRF.
@@ -311,10 +382,10 @@ class encoding_model():
 
             # nonzero_inds_full is length max_features (or max_features+1 if bias=True)
             # same size as the final params matrices will be.
-            nonzero_inds_full = np.logical_and(self.masks[:,pp], feature_inds_defined)             
+            nonzero_inds_full = self.masks[:,pp] & feature_inds_defined            
             # nonzero_inds_full is restricted to just indices that are defined for this prf 
             # (same size as features)
-            nonzero_inds_short = self.masks[feature_inds_defined,pp]==1
+            nonzero_inds_short = self.masks[feature_inds_defined,pp]
 
             # Send matrices to gpu    
             _xtrn = torch_utils._to_torch(trn_features[:, nonzero_inds_short], device=self.device)
@@ -322,8 +393,8 @@ class encoding_model():
 
             # Do part of the matrix math involved in ridge regression optimization out of the loop, 
             # because this part will be same for all the voxels.
-            _cof = self.__cofactor_fn_cpu__(_xtrn) 
-
+            _cof = self.__cofactor_fn_cpu__(_xtrn, self.lambda_vectors[pp][:,nonzero_inds_full]) 
+             
              # Now looping over batches of voxels (only reason is because can't store all in memory at same time)
             for vv in range(n_voxel_batches):
                 
@@ -337,7 +408,13 @@ class encoding_model():
                                 nonzero_inds_full, \
                                 full_model_improved, voxels_to_fit, \
                                 mm, pp, voxel_batch_inds)              
-                else:                       
+                elif self.bootstrap_data and not self.boot_val_only:
+                    self.__fit_voxel_batch_bootstrap__(_xtrn, _xout, \
+                                trn_data_use, out_data_use, \
+                                nonzero_inds_full, \
+                                full_model_improved, voxels_to_fit, \
+                                mm, pp, voxel_batch_inds)   
+                else:
                     self.__fit_voxel_batch__(_cof, _xout, \
                                 trn_data_use, out_data_use, \
                                 nonzero_inds_full, \
@@ -351,10 +428,7 @@ class encoding_model():
                                 nonzero_inds_full, \
                                 full_model_improved, voxels_to_fit, \
                                 mm, pp, voxel_batch_inds):
-                
-                 
-        
-        
+
         # Send matrices to gpu
         _vtrn = torch_utils._to_torch(trn_data_use[:,voxel_batch_inds], device=self.device)
         _vout = torch_utils._to_torch(out_data_use[:,voxel_batch_inds], device=self.device)
@@ -427,11 +501,7 @@ class encoding_model():
                                     nonzero_inds_full, \
                                     full_model_improved, voxels_to_fit, \
                                     mm, pp, voxel_batch_inds):
-                
-        # Send matrices to gpu
-        trnbatch = trn_data_use[:,voxel_batch_inds]
-        outbatch = trn_data_use[:,voxel_batch_inds]
-
+        
         betas_all = np.zeros((len(voxel_batch_inds), _xout.shape[1], self.n_shuff_iters), dtype=self.dtype)
         
         # do shuffled fitting in batches to prevent memory overload
@@ -470,17 +540,11 @@ class encoding_model():
             # will be size [voxels x features x n_shuff_iters]
             betas = np.moveaxis(betas,[0,1,2],[2,0,1])
 
-            print('size of best betas:')
-            print(betas.shape)
-            
             betas_all[:,:,batch_inds] = betas
             
             betas = None
             gc.collect()
-            
-        print('size of betas_all:')
-        print(betas_all.shape)
-            
+         
         # for permutation analysis, we already fit pRFs so always saving all voxels.
         voxel_inds_save = voxel_batch_inds
 
@@ -507,31 +571,109 @@ class encoding_model():
         best_lambda_index = None
         best_loss_values = None
         gc.collect()
+          
+            
+    def __fit_voxel_batch_bootstrap__(self, _xtrn, _xout, \
+                                    trn_data_use, out_data_use, \
+                                    nonzero_inds_full, \
+                                    full_model_improved, voxels_to_fit, \
+                                    mm, pp, voxel_batch_inds):
+       
+        betas_all = np.zeros((len(voxel_batch_inds), _xout.shape[1], self.n_boot_iters), dtype=self.dtype)
+        
+        for ii in range(self.n_boot_iters):
+            
+            if not np.mod(ii, 100):
+                print('bootstrap resampled fitting, iteration %d of %d'%(ii, self.n_boot_iters))
+            
+            _vtrn = torch_utils._to_torch(trn_data_use[:,voxel_batch_inds], device=self.device)
+            _vout = torch_utils._to_torch(out_data_use[:,voxel_batch_inds], device=self.device)
+        
+            # apply resampling order to voxel data
+            _vtrn = _vtrn[self.boot_inds_trn[:,ii],:]
+            _vout = _vout[self.boot_inds_out[:,ii],:]
+            
+            # apply resampling order to design matrix too
+            _cof = self.__cofactor_fn_cpu__(_xtrn[self.boot_inds_trn[:,ii],:], self.lambda_vectors[pp][:,nonzero_inds_full])
+            
+            # Fit weights and get prediction loss here
+            _beta, _loss = self.__loss_fn__(_cof, \
+                                            _vtrn, \
+                                            _xout[self.boot_inds_out[:,ii],:], \
+                                            _vout) 
+           
+            # choose best lambda value and the loss that went with it.
+            # loss is size: [lambdas x voxels]
+            _best_loss_values, _best_lambda_index = torch.min(_loss, dim=0)
+
+            # back to numpy now
+            best_loss_values = torch_utils.get_value(_best_loss_values)
+            best_lambda_index =  torch_utils.get_value(_best_lambda_index)
+
+            # betas is size: [lambdas x features x voxels]
+            betas = torch_utils.get_value(_beta)
+            # choose betas that go with best lambda (reduce to size [features x voxels])
+            betas = np.array([betas[best_lambda_index[ii],:,ii] for ii in range(len(best_lambda_index))])
+
+            betas_all[:,:,ii] = betas
+            
+            betas = None
+            gc.collect()
+            
+        # for permutation analysis, we already fit pRFs so always saving all voxels.
+        voxel_inds_save = voxel_batch_inds
+
+        self.best_prf_models[voxel_inds_save,pp] = mm
+
+        # only saving one lambda and loss, because they'll get very large and we don't really need them.
+        self.best_lambdas[voxel_inds_save,pp] = best_lambda_index
+        self.best_losses[voxel_inds_save,pp] = best_loss_values                
+
+        # make sure to save all the weights, because we still need to evaluate the model
+        # taking the weights associated with the best lambda value
+        # if there are fewer features defined than self.max_features,
+        # then we'll have some zeros in this matrix 
+        best_w_tmp = self.best_w_params[voxel_inds_save,:,pp,:] # don't copy, save space
+        # best_w_tmp = copy.deepcopy(self.best_w_params[voxel_inds_save,:,pp,:])
+        best_w_tmp[:,nonzero_inds_full,:] = betas_all             
+        best_w_tmp[:,~nonzero_inds_full,:] = 0.0 # make sure to fill zeros here
+
+        # put this back into full sized array.
+        self.best_w_params[voxel_inds_save,:,pp,:] = best_w_tmp
+
+        best_w_tmp = None
+        betas_all = None
+        best_lambda_index = None
+        best_loss_values = None
+        gc.collect()
+           
                 
-                
-    def __cofactor_fn_cpu__(self, _x):
+    def __cofactor_fn_cpu__(self, _x, lambda_vectors):
+
         '''
         Generating a matrix needed to solve ridge regression model for each lambda value.
-        Ridge regression (Tikhonov) solution is :
+        Ridge regression solution is :
         w = (X^T*X + I*lambda)^-1 * X^T * Y
         This func will return (X^T*X + I*lambda)^-1 * X^T. 
         So once we have that, can just multiply by training data (Y) to get weights.
         returned size is [nLambdas x nFeatures x nTrials]
         This version makes sure that the torch inverse operation is done on the cpu, and in 
         floating point-64 precision. 
-        Otherwise it gives a numerically different result than numpy operations.
-
+        Otherwise it can give bad results for small lambdas (may be cuda-version-dependent).
         '''
         device_orig = _x.device
         type_orig = _x.dtype
         # switch to this specific format which works with inverse
         _x = _x.to('cpu').to(torch.float64)
-
+       
+        mult = _x.T @ _x
+        ridge_term = torch.eye(_x.size()[1], device='cpu', dtype=torch.float64)
+        
         try: 
-            _f = torch.stack([(torch.mm(torch.t(_x), _x) + \
-                               torch.eye(_x.size()[1], device='cpu', dtype=torch.float64) * l).inverse() \
-                              for l in self.lambdas], axis=0) 
-
+           
+            _f = torch.stack([(mult+ridge_term*l).inverse() \
+                       for l in lambda_vectors], axis=0)
+            
         except RuntimeError:
             # problem with inverse - print some info to help diagnose the problem.
             # usually due to zero columns or duplicate columns.
@@ -541,21 +683,21 @@ class encoding_model():
             print('Rank of _x:')
             print(torch.matrix_rank(_x))
             # to prevent a crash, replace 0 with a small lambda value, just temporarily
-            lambdas_adjusted = copy.deepcopy(self.lambdas)
+            lambdas_adjusted = copy.deepcopy(lambda_vectors)
             lambdas_adjusted[lambdas_adjusted==0] = 10e-9
             print('Trying again with these lambda values:')
             print(lambdas_adjusted)
-            _f = torch.stack([(torch.mm(torch.t(_x), _x) + \
-                               torch.eye(_x.size()[1], device='cpu', dtype=torch.float64) * l).inverse() \
-                              for l in lambdas_adjusted], axis=0) 
-
-        # [#lambdas, #feature, #feature] 
-        cof = torch.tensordot(_f, _x, dims=[[2],[1]]) # [#lambdas, #feature, #sample]
-
+            _f = torch.stack([(mult+ridge_term*l).inverse() \
+                       for l in lambdas_adjusted], axis=0)
+            
+        # [lambdas x features x features] x [images x features]
+        cof = torch.tensordot(_f.to(device_orig), \
+                              _x.to(device_orig), \
+                              dims=[[2],[1]]) 
+        # return [lambdas x features x samples]
+        
         # put back to whatever way it was before, so that we can continue with other operations as usual
-        return cof.to(device_orig).to(type_orig)
-
-
+        return cof.to(type_orig)
 
     def __loss_fn__(self, _cofactor, _vtrn, _xout, _vout):
         '''
@@ -629,6 +771,11 @@ class encoding_model():
                                     dtype=self.dtype)
             self.val_r2 = np.zeros(shape=(self.n_voxels, self.n_partial_versions, self.n_shuff_iters), \
                                    dtype=self.dtype)
+        elif self.bootstrap_data:
+            self.val_cc  = np.zeros(shape=(self.n_voxels, self.n_partial_versions, self.n_boot_iters), \
+                                    dtype=self.dtype)
+            self.val_r2 = np.zeros(shape=(self.n_voxels, self.n_partial_versions, self.n_boot_iters), \
+                                   dtype=self.dtype)
         else:
             self.val_cc  = np.zeros(shape=(self.n_voxels, self.n_partial_versions), dtype=self.dtype)
             self.val_r2 = np.zeros(shape=(self.n_voxels, self.n_partial_versions), dtype=self.dtype)
@@ -643,6 +790,7 @@ class encoding_model():
         self.pred_voxel_data = np.full(fill_value=0, shape=(self.n_val_trials, self.n_voxels, self.n_partial_versions), \
                                   dtype=self.dtype)
         print('made arrays'); sys.stdout.flush()
+        
         if self.shuffle_data:
             # prep for permutation test evaluation, if doing 
             if self.trials_use_each_prf_val is not None:
@@ -653,6 +801,19 @@ class encoding_model():
             self.shuff_inds_val = np.zeros((self.n_val_trials,self.n_shuff_iters),dtype=int)
             for xx in range(self.n_shuff_iters):
                 self.shuff_inds_val[:,xx] = np.random.permutation(self.n_val_trials)
+        
+        if self.bootstrap_data:
+            # prep for permutation test evaluation, if doing 
+            if self.trials_use_each_prf_val is not None:
+                raise ValueError('cannot specify a trial subset when also doing bootstrap')
+            if self.boot_rnd_seed is not None:
+                np.random.seed(self.boot_rnd_seed)    
+            print('making bootstrap inds')
+            self.boot_inds_val = np.zeros((self.n_val_trials,self.n_boot_iters),dtype=int)
+            for xx in range(self.n_boot_iters):
+                self.boot_inds_val[:,xx] = np.random.choice(np.arange(self.n_val_trials), \
+                                                            self.n_val_trials, replace=True)
+                
                 
     def __val_one_prf__(self, mm):
 
@@ -660,10 +821,10 @@ class encoding_model():
         voxels_to_do = np.where(self.best_prf_models==mm)[0]  
         n_voxel_batches = int(np.ceil(len(voxels_to_do)/self.voxel_batch_size))
 
-        print('about to load features') sys.stdout.flush()
+        print('about to load features'); sys.stdout.flush()
         # all_feat_concat is size [ntrials x nfeatures] (where nfeatures can be <max_features)
         # feature_inds_defined is [max_features]
-        all_feat_concat, feature_inds_defined = self.feature_loader.load(self.image_inds_val, mm, fitting_mode=False)
+        all_feat_concat, feature_inds_defined = self.feature_loader.load(self.image_inds_val, mm)
         print('loaded features'); sys.stdout.flush()
               
         if self.zscore:
@@ -703,8 +864,9 @@ class encoding_model():
         # Next looping over all voxels with this same pRF, in batches        
         for vv in range(n_voxel_batches):
 
-            print('Getting predictions for voxel batch %d of %d'%(vv, n_voxel_batches))
-            sys.stdout.flush()
+            if np.mod(vv, 100)==0:
+                print('Getting predictions for voxel batch %d of %d'%(vv, n_voxel_batches))
+                sys.stdout.flush()
         
             vinds = np.arange(self.voxel_batch_size*vv, np.min([self.voxel_batch_size*(vv+1), len(voxels_to_do)]))
             voxel_batch_inds = voxels_to_do[vinds]
@@ -723,7 +885,7 @@ class encoding_model():
         
                 # masks describes the indices of the features that are included in this partial model
                 # n_features_max in length
-                features_to_use = self.masks[0:self.max_features,pp]==1
+                features_to_use = self.masks[0:self.max_features,pp]
                 print('Includes %d features'%np.sum(features_to_use))
                 sys.stdout.flush()
         
@@ -733,19 +895,31 @@ class encoding_model():
                 # max number of features.
                 # But they are zero in weight matrix too, so turns out ok.
 
-                if not self.shuffle_data:
-                    self.__get_preds_one_batch__(features, \
-                                                 features_to_use, \
-                                                 trials_use, \
-                                                 voxel_data_use, 
-                                                 voxel_batch_inds, pp)
-                else:
+                if self.shuffle_data:
                     self.__get_preds_one_batch_shuffle__(features, \
                                                  features_to_use, \
                                                  trials_use, \
                                                  voxel_data_use, 
                                                  voxel_batch_inds, pp)
-                          
+                elif self.bootstrap_data and not self.boot_val_only:
+                    self.__get_preds_one_batch_bootstrap__(features, \
+                                                 features_to_use, \
+                                                 trials_use, \
+                                                 voxel_data_use, 
+                                                 voxel_batch_inds, pp)
+                elif self.bootstrap_data and self.boot_val_only:
+                    self.__get_preds_one_batch_bootstrap_val_only__(features, \
+                                                 features_to_use, \
+                                                 trials_use, \
+                                                 voxel_data_use, 
+                                                 voxel_batch_inds, pp)
+                else:
+                    self.__get_preds_one_batch__(features, \
+                                                 features_to_use, \
+                                                 trials_use, \
+                                                 voxel_data_use, 
+                                                 voxel_batch_inds, pp)
+                gc.collect()
                         
     def __get_preds_one_batch__(self, features, \
                                          features_to_use, \
@@ -780,7 +954,8 @@ class encoding_model():
             pred_block[trial_batch_inds] = torch_utils.get_value(_r) 
 
         # Now for this batch of voxels and this partial version of the model, measure performance.
-        self.val_cc[voxel_batch_inds,pp] = stats_utils.get_corrcoef(voxel_data_use[:,voxel_batch_inds], pred_block)
+        if self.do_corrcoef:
+            self.val_cc[voxel_batch_inds,pp] = stats_utils.get_corrcoef(voxel_data_use[:,voxel_batch_inds], pred_block)
         self.val_r2[voxel_batch_inds,pp] = stats_utils.get_r2(voxel_data_use[:,voxel_batch_inds], pred_block)
 
         # Make sure to save the trial-wise predictions, for use in analyses later on 
@@ -844,7 +1019,8 @@ class encoding_model():
             # use the randomized validation set order here
             shuff_order = self.shuff_inds_val[:,xx]
             shuff_dat = voxel_data_use[:,voxel_batch_inds][shuff_order,:]
-            self.val_cc[voxel_batch_inds,pp,xx] = stats_utils.get_corrcoef(shuff_dat, pred_block[:,:,xx])
+            if self.do_corrcoef:
+                self.val_cc[voxel_batch_inds,pp,xx] = stats_utils.get_corrcoef(shuff_dat, pred_block[:,:,xx])
             self.val_r2[voxel_batch_inds,pp,xx] = stats_utils.get_r2(shuff_dat, pred_block[:,:,xx])
 
         # We don't need to save every trial-wise prediction here because they'll get very large.
@@ -859,7 +1035,117 @@ class encoding_model():
         pred_block = None;
         gc.collect()
 
+        
+    def __get_preds_one_batch_bootstrap__(self, features, \
+                                         features_to_use, \
+                                         trials_use, \
+                                         voxel_data_use, 
+                                         voxel_batch_inds, pp):
+
+        # use weights computed on bootstrap resampled data
+        # weights is [voxels x features x n_boot_iters]
+        weights = self.best_weights[voxel_batch_inds,:,pp,:][:,features_to_use, :]
+        # biases is [voxels x n_boot_iters]
+        bias = self.best_biases[voxel_batch_inds,pp,:]
+
+        n_trials_use = np.sum(trials_use)
+        assert(n_trials_use==features.shape[0]) 
+        # pred_block = np.full(fill_value=0, shape=(n_trials_use, len(voxel_batch_inds), self.n_boot_iters), dtype=self.dtype)
+
+        for ii in range(self.n_boot_iters):
+            
+            if not np.mod(ii, 100):
+                print('bootstrap resampled validation, iter %d of %d'%(ii, self.n_boot_iters))
+
+            # apply resampling order to design matrix for validation set (features)
+            _features = torch_utils._to_torch(features[self.boot_inds_val[:,ii],:,:], device=self.device)
+            # features is [#samples, #features, #voxels]
+            # swap dims to [#voxels, #samples, features]
+            _features = torch.transpose(torch.transpose(_features, 0, 2), 1, 2)
+
+            _weights = torch_utils._to_torch(weights[:,:,ii], device=self.device)
+            _bias = torch_utils._to_torch(bias[:,ii], device=self.device)
+
+            # weights is [voxels x features]
+            # _r will be [voxels x trials x 1] - then [trials x voxels]
+            _r = torch.squeeze(torch.bmm(_features, torch.unsqueeze(_weights, 2)), dim=2).t() 
+
+            if _bias is not None:
+                _r = _r + torch.tile(torch.unsqueeze(_bias, 0), [_r.shape[0],1])
+
+            _r = _r.detach().cpu().numpy()
+            # pred_block[:,:,ii] = _r
+            
+            # Measure performance
+            # Make sure to apply re-sampling order to the validation set data here.
+            shuff_dat = voxel_data_use[:,voxel_batch_inds][self.boot_inds_val[:,ii],:]
+            if self.do_corrcoef:
+                self.val_cc[voxel_batch_inds,pp,ii] = stats_utils.get_corrcoef(shuff_dat, _r)
+            self.val_r2[voxel_batch_inds,pp,ii] = stats_utils.get_r2(shuff_dat, _r)
+
+        # We don't need to save every trial-wise prediction here because they'll get very large.
+        # just save one in case we want to check values later.
+        pred_these_trials = self.pred_voxel_data[trials_use,:,pp]
+        pred_these_trials[:,voxel_batch_inds] = _r
+        self.pred_voxel_data[trials_use,:,pp] = pred_these_trials
+
+        sys.stdout.flush()
+        
+        _r = None;
+        
+        gc.collect()
+        
+    def __get_preds_one_batch_bootstrap_val_only__(self, features, \
+                                                 features_to_use, \
+                                                 trials_use, \
+                                                 voxel_data_use, 
+                                                 voxel_batch_inds, pp):
 
 
+        _weights = torch_utils._to_torch(self.best_weights[voxel_batch_inds,:,pp], device=self.device)   
+        _weights = _weights[:, features_to_use]
+        _bias = torch_utils._to_torch(self.best_biases[voxel_batch_inds,pp], device=self.device)
 
+        n_trials_use = np.sum(trials_use)
+        pred_block = np.full(fill_value=0, shape=(n_trials_use, len(voxel_batch_inds)), dtype=self.dtype)
 
+        # Now looping over validation set trials in batches
+        n_trial_batches = int(np.ceil(n_trials_use/self.sample_batch_size))
+        for ti in range(n_trial_batches):
+
+            trial_batch_inds = np.arange(self.sample_batch_size*ti, np.min([self.sample_batch_size*(ti+1), n_trials_use]))
+
+            # features is [trials x features x voxels]
+            _features = torch_utils._to_torch(features[trial_batch_inds,:,:], device=self.device)
+            # swap dims to [voxels x trials x features]
+            _features = torch.transpose(torch.transpose(_features, 0, 2), 1, 2)
+            # weights is [voxels x features]
+            # _r will be [voxels x trials x 1] - then [trials x voxels]
+            _r = torch.squeeze(torch.bmm(_features, torch.unsqueeze(_weights, 2)), dim=2).t() 
+
+            if _bias is not None:
+                _r = _r + torch.tile(torch.unsqueeze(_bias, 0), [_r.shape[0],1])
+
+            pred_block[trial_batch_inds] = torch_utils.get_value(_r) 
+
+        for ii in range(self.n_boot_iters):
+            
+            if not np.mod(ii, 100):
+                print('computing bootstrap resampled validation acc, iter %d of %d'%(ii, self.n_boot_iters))
+
+            # Measure performance, using this bootstrap resampled set of trials
+            resamp_dat = voxel_data_use[:,voxel_batch_inds][self.boot_inds_val[:,ii],:]
+            resamp_pred = pred_block[self.boot_inds_val[:,ii],:]
+               
+            if self.do_corrcoef:
+                self.val_cc[voxel_batch_inds,pp,ii] = stats_utils.get_corrcoef(resamp_dat, resamp_pred)
+            self.val_r2[voxel_batch_inds,pp,ii] = stats_utils.get_r2(resamp_dat, resamp_pred)
+
+        # Make sure to save the trial-wise predictions, for use in analyses later on 
+        pred_these_trials = self.pred_voxel_data[trials_use,:,pp]
+        pred_these_trials[:,voxel_batch_inds] = pred_block
+        self.pred_voxel_data[trials_use,:,pp] = pred_these_trials
+
+        sys.stdout.flush()
+
+            
