@@ -453,3 +453,16 @@ def fdr(pvals, alpha=None, parametric=True):
     p_masked = pvals<=p_fdr
     
     return p_fdr, p_masked
+
+
+def holmes_bonferonni(vector, q):
+    n = len(vector)
+    ps = np.sort(vector)
+    qs = np.array([q/i for i in range (1,n+1)])[::-1]
+    thrs = np.where(ps<=qs)[0]
+    args = np.argsort(vector)
+    if len(thrs)>0:
+        thrs = vector[args[thrs[-1]]]
+    else:
+        thrs = 0
+    return vector<=thrs, thrs

@@ -5,9 +5,7 @@ import h5py
 import copy
 
 from utils import default_paths
-from feature_extraction import extract_alexnet_features, extract_clip_features, texture_feature_utils
 from model_fitting import initialize_fitting
-
 
 """
 Code to load pre-computed features from various models (gabor, alexnet, semantic, etc.)
@@ -70,7 +68,8 @@ class fwrf_feature_loader:
         self.n_feature_types=1
         
     def __init_pyramid_texture__(self, kwargs):
-        
+                
+        from feature_extraction import texture_feature_utils
         pyramid_texture_feat_path = default_paths.pyramid_texture_feat_path
         self.do_varpart=kwargs['do_varpart'] if 'do_varpart' in kwargs.keys() else True
         self.n_ori = kwargs['n_ori'] if 'n_ori' in kwargs.keys() else 4
@@ -149,6 +148,7 @@ class fwrf_feature_loader:
     
     def __init_alexnet__(self,kwargs):
     
+        from feature_extraction import extract_alexnet_features
         self.padding_mode = kwargs['padding_mode'] if 'padding_mode' in kwargs.keys() else 'reflect'
         if 'layer_name' not in kwargs.keys():
             raise ValueError('for alexnet, need to specify a layer name')
@@ -181,6 +181,7 @@ class fwrf_feature_loader:
         
     def __init_clip__(self, kwargs):
         
+        from feature_extraction import extract_clip_features
         self.model_architecture = kwargs['model_architecture'] if 'model_architecture' in kwargs.keys() else 'RN50'
         if 'layer_name' not in kwargs.keys():
             raise ValueError('for clip, need to specify a layer name')

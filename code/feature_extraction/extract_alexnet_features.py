@@ -49,6 +49,9 @@ def get_features_each_prf(subject, use_node_storage=False, debug=False, \
     else:
         alexnet_feat_path = default_paths.alexnet_feat_path
 
+    if not os.path.exists(alexnet_feat_path):
+        os.makedirs(alexnet_feat_path)
+      
     # Load and prepare the image set to work with (all images for the current subject, 10,000 ims)
     stim_root = default_paths.stim_root
     image_data = nsd_utils.get_image_data(subject)  

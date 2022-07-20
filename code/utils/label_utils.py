@@ -329,7 +329,7 @@ def write_indoor_outdoor_csv(subject):
     return
 
 
-def write_natural_humanmade_csv(subject, which_prf_grid):
+def write_natural_humanmade_csv(subject, which_prf_grid, debug=False):
     """
     Creating binary labels for natural/humanmade status of image patches (inferred based on presence of 
     various categories in coco and coco-stuff).
@@ -395,6 +395,9 @@ def write_natural_humanmade_csv(subject, which_prf_grid):
                                                                                         which_prf_grid))
     for prf_model_index in range(n_prfs):
              
+        if debug and prf_model_index>1:
+            continue
+            
         fn2load = os.path.join(labels_folder, \
                               'S%d_cocolabs_binary_prf%d.csv'%(subject, prf_model_index))
         coco_df = pd.read_csv(fn2load, index_col = 0)
@@ -448,7 +451,7 @@ def write_natural_humanmade_csv(subject, which_prf_grid):
     return
 
 
-def write_realworldsize_csv(subject, which_prf_grid):
+def write_realworldsize_csv(subject, which_prf_grid, debug=False):
     """
     Creating binary labels for real-world-size of image patches (based on approx sizes
     of object categories in coco).
@@ -458,7 +461,7 @@ def write_realworldsize_csv(subject, which_prf_grid):
                 coco_utils.get_coco_cat_info(coco_utils.coco_val)
 
     # load a dict of sizes for each category
-    fn2save = (os.path.join(default_paths.stim_labels_root,'Realworldsize_categ.npy'))
+    fn2save = os.path.join(os.path.dirname(os.path.abspath(__file__)),'files','Realworldsize_categ.npy')
     names_to_sizes = np.load(fn2save, allow_pickle=True).item()
     # make [3 x ncateg] one-hot array of size labels for each categ
     categ_size_labels = np.array([[names_to_sizes[kk]==ii for kk in names_to_sizes.keys()] \
@@ -474,6 +477,9 @@ def write_realworldsize_csv(subject, which_prf_grid):
                                                                                         which_prf_grid))
     for prf_model_index in range(n_prfs):
              
+        if debug and prf_model_index>1:
+            continue
+            
         fn2load = os.path.join(labels_folder, \
                           'S%d_cocolabs_binary_prf%d.csv'%(subject, prf_model_index))
         coco_df = pd.read_csv(fn2load, index_col = 0)
@@ -546,7 +552,12 @@ def count_labels_each_prf(which_prf_grid=5, debug=False):
     stuff_supcat_counts_valtrials = np.zeros((n_subjects, n_prfs, n_stuff_supcat))
     stuff_cat_counts_valtrials = np.zeros((n_subjects, n_prfs, n_stuff_cat))
 
-    for si, ss in enumerate(np.arange(1,9)):
+    if debug:
+        subjects = [1]
+    else:
+        subjects = np.arange(1,9)
+        
+    for si, ss in enumerate(subjects):
         labels_folder = os.path.join(default_paths.stim_labels_root, \
                                          'S%d_within_prf_grid%d'%(ss, which_prf_grid))
         print('loading labels from folder %s...'%labels_folder)
@@ -566,6 +577,8 @@ def count_labels_each_prf(which_prf_grid=5, debug=False):
         
         sys.stdout.flush()
         for prf_model_index in range(n_prfs):
+            if debug and prf_model_index>1:
+                continue
             coco_things_labels_fn = os.path.join(labels_folder, \
                                       'S%d_cocolabs_binary_prf%d.csv'%(ss, prf_model_index))  
             coco_stuff_labels_fn = os.path.join(labels_folder, \
@@ -703,7 +716,7 @@ def get_top_two_subcateg(which_prf_grid=5):
     
     
     
-def concat_labels_each_prf(subject, which_prf_grid, verbose=False):
+def concat_labels_each_prf(subject, which_prf_grid, verbose=False, debug=False):
 
     """
     Concatenate the csv files containing a range of different labels for each image patch.
@@ -760,6 +773,9 @@ def concat_labels_each_prf(subject, which_prf_grid, verbose=False):
 
     for prf_model_index in range(n_prfs):
 
+        if debug and prf_model_index>1:
+            continue
+            
         # will make a single dataframe for each pRF
         labels_df = pd.DataFrame({})
         save_name = os.path.join(labels_folder, \
@@ -902,6 +918,7 @@ def count_highlevel_labels(which_prf_grid=5, axes_to_do=[0,2,3], \
     models = initialize_fitting.get_prf_models(which_prf_grid)
     n_prfs = models.shape[0]
 
+   
     subjects = np.array(list(np.arange(1,9)) + [999])
     n_subjects = len(subjects)
     n_axes = len(axes_to_do)
@@ -911,6 +928,9 @@ def count_highlevel_labels(which_prf_grid=5, axes_to_do=[0,2,3], \
     
     for si, ss in enumerate(subjects):
     
+        if debug and si>0:
+            continue
+            
         labels_folder = os.path.join(default_paths.stim_labels_root, \
                                      'S%d_within_prf_grid%d'%(ss, which_prf_grid))
         if si==0:

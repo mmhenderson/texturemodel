@@ -340,7 +340,7 @@ def resize_image_tensor(x, newsize):
             r[i] = np.asarray(PIL.Image.fromarray(t).resize(newsize, resample=PIL.Image.BILINEAR))
         return r.transpose((0,3,1,2))   
 
-def get_subject_specific_images(nsd_root, path_to_save, npix=227):
+def get_subject_specific_images(nsd_root, path_to_save, npix=227, debug=False):
 
     """ 
     Load the big array of NSD images for all subjects.
@@ -352,7 +352,9 @@ def get_subject_specific_images(nsd_root, path_to_save, npix=227):
     exp_design_file = os.path.join(nsd_root,"nsddata/experiments/nsd/nsd_expdesign.mat")
     exp_design = loadmat(exp_design_file)
     subject_idx  = exp_design['subjectim']
-    
+    if debug:
+        subject_idx = subject_idx[0:1]
+        
     print ("Loading full block of images...")
     image_data_set = h5py.File(stim_file_original, 'r')
     print(image_data_set.keys())

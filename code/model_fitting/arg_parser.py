@@ -18,7 +18,7 @@ def get_args():
                     help="analyze sessions 1-#")
     parser.add_argument("--single_sess", type=int, default=0,
                     help="analyze just this one session (enter integer)")
-    parser.add_argument("--average_image_reps", type=nice_str2bool, default=0,
+    parser.add_argument("--average_image_reps", type=nice_str2bool, default=1,
                     help="average over trial repetitions of same image?")
     parser.add_argument("--save_model_residuals", type=nice_str2bool, default=0, 
                     help="save model residuals for each voxel?")
@@ -30,7 +30,7 @@ def get_args():
     parser.add_argument("--trial_subset", type=str,default='all', 
                     help="fit for a subset of trials only? default all trials")
    
-    parser.add_argument("--which_prf_grid", type=int,default=1,
+    parser.add_argument("--which_prf_grid", type=int,default=5,
                     help="which grid of candidate prfs?")
     parser.add_argument("--prf_fixed_sigma", type=float, default=None, 
                     help="if sigma is fixed, what sigma value to use?")
@@ -44,7 +44,7 @@ def get_args():
     
     parser.add_argument("--ridge", type=nice_str2bool, default=True,
                     help="want to do ridge regression (lambda>0)? 1 for yes, 0 for no")
-    parser.add_argument("--set_lambda_per_group", type=nice_str2bool, default=True,
+    parser.add_argument("--set_lambda_per_group", type=nice_str2bool, default=False,
                     help="want to allow lambda to differ between diff feature groups?? 1 for yes, 0 for no")
     parser.add_argument("--zscore_features", type=nice_str2bool, default=True,
                     help="want to z-score each feature right before fitting encoding model? 1 for yes, 0 for no")
@@ -88,19 +88,19 @@ def get_args():
     parser.add_argument("--use_precomputed_prfs", type=nice_str2bool,default=False,
                     help="want to use prf estimates that were already computed? 1 for yes, 0 for no")
     parser.add_argument("--prfs_model_name", type=str, default='', 
-                    help="model the prfs are from?")
+                    help="model the prfs are from? by default, uses alexnet pRFs")
     
     
     parser.add_argument("--do_val", type=nice_str2bool,default=True, 
                     help="want to do model validation? 1 for yes, 0 for no")
-    parser.add_argument("--do_varpart", type=nice_str2bool,default=True,
+    parser.add_argument("--do_varpart", type=nice_str2bool,default=False,
                     help="want to do variance partition? 1 for yes, 0 for no")
     parser.add_argument("--include_solo_models", type=nice_str2bool,default=True,
                     help="in varpart, want to fit each of the component models alone? 1 for yes, 0 for no")
     
-    parser.add_argument("--do_tuning", type=nice_str2bool,default=True,
+    parser.add_argument("--do_tuning", type=nice_str2bool,default=False,
                     help="want to estimate tuning based on correlations? 1 for yes, 0 for no")
-    parser.add_argument("--do_sem_disc", type=nice_str2bool,default=True,
+    parser.add_argument("--do_sem_disc", type=nice_str2bool,default=False,
                     help="want to estimate semantic discriminability? 1 for yes, 0 for no")
     parser.add_argument("--overwrite_sem_disc", type=nice_str2bool,default=False,
                     help="want to re-do (overwrite) semantic discriminability? 1 for yes, 0 for no")

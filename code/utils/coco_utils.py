@@ -194,7 +194,7 @@ def get_coco_ids_indep(n_images = 10000):
     assert(not any(np.isin(ids_indep, ids_nsd)))
 
     # save as a file for use later
-    ims_df = pd.DataFrame(data=ids_use_indep, columns=['cocoId'])
+    ims_df = pd.DataFrame(data=ids_indep, columns=['cocoId'])
     ims_df.to_csv(os.path.join(default_paths.root, 'features', 'coco_ids_indep_set.csv'))
     
 def prep_indep_coco_images(n_pix=240, debug=False):
@@ -243,18 +243,18 @@ def prep_indep_coco_images(n_pix=240, debug=False):
         bboxes += [tuple(bbox)]
         coco_split += ['train2017']
         filenames += [cocoim_raw]
-        
-    info_df = pd.DataFrame({'cocoId': coco_ids, 'cropBox': bboxes, 'cocoSplit': coco_split, 'filename_raw': filenames})
-    fn2save_df = os.path.join(default_paths.stim_root, 'Indep_set_info.csv')
+
+    if debug:
+        fn2save = os.path.join(default_paths.stim_root, 'Indep_set_stimuli_%d_debug.h5py'%n_pix)
+        fn2save_df = os.path.join(default_paths.stim_root, 'Indep_set_info_debug.csv')    
+    else:
+        fn2save = os.path.join(default_paths.stim_root, 'Indep_set_stimuli_%d.h5py'%n_pix)
+        fn2save_df = os.path.join(default_paths.stim_root, 'Indep_set_info.csv')
     
+    info_df = pd.DataFrame({'cocoId': coco_ids, 'cropBox': bboxes, 'cocoSplit': coco_split, 'filename_raw': filenames})    
     print('saving to %s'%fn2save_df)
     info_df.to_csv(fn2save_df)
     
-    if debug:
-        fn2save = os.path.join(default_paths.stim_root, 'Indep_set_stimuli_%d_debug.h5py'%n_pix)
-    else:
-        fn2save = os.path.join(default_paths.stim_root, 'Indep_set_stimuli_%d.h5py'%n_pix)
-     
     print('saving to %s'%fn2save)
     
     with h5py.File(fn2save, 'w') as hf:

@@ -3,6 +3,7 @@ import os
 import pandas as pd
 
 from utils import default_paths, nsd_utils
+from model_fitting import initialize_fitting
 
 class semantic_feature_loader:
     
@@ -11,6 +12,7 @@ class semantic_feature_loader:
         self.subject = subject
         self.feature_set = feature_set  
         self.which_prf_grid = which_prf_grid
+        self.n_prfs = initialize_fitting.get_prf_models(which_grid=self.which_prf_grid).shape[0]
         self.remove_missing = kwargs['remove_missing'] if 'remove_missing' in kwargs.keys() else False
         self.use_pca_feats = kwargs['use_pca_feats'] if 'use_pca_feats' in kwargs.keys() else False
         

@@ -84,10 +84,6 @@ class texture_feature_extractor(nn.Module):
                                 aperture=self.aperture, device=self.device)
         all_feat = dict(zip(feature_types_all, pars))
         
-        if torch.any(torch.abs(pixel_stats)>10**6):
-            print('WARNING THERE ARE SOME VERY BIG VALUES (>10^6) IN PIXEL STATS')
-            print(torch.max(pixel_stats))
-
         elapsed =  time.time() - t
         print('time elapsed = %.5f'%elapsed)
 

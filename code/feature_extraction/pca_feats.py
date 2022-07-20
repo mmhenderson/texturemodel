@@ -4,7 +4,6 @@ import time, h5py
 
 from utils import default_paths, numpy_utils, nsd_utils
 from model_fitting import initialize_fitting 
-from feature_extraction import texture_feature_utils
 from sklearn import decomposition
 import argparse
 import pandas as pd
