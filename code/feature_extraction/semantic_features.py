@@ -14,27 +14,56 @@ class semantic_feature_loader:
         self.which_prf_grid = which_prf_grid
         self.n_prfs = initialize_fitting.get_prf_models(which_grid=self.which_prf_grid).shape[0]
         self.remove_missing = kwargs['remove_missing'] if 'remove_missing' in kwargs.keys() else False
-        self.use_pca_feats = kwargs['use_pca_feats'] if 'use_pca_feats' in kwargs.keys() else False
         
         self.__get_categ_exclude__()
       
-        if self.feature_set=='indoor_outdoor':
+        if self.n_prfs==1:
+          
+            self.same_labels_all_prfs=True
+            
+            self.labels_folder = default_paths.stim_labels_root
+            if self.feature_set=='natural_humanmade':            
+                self.features_file = os.path.join(self.labels_folder, \
+                                  'S%d_natural_humanmade.csv'%(self.subject))          
+                self.n_features = 2
+                self.cols_use = None
+            elif self.feature_set=='real_world_size':            
+                self.features_file = os.path.join(self.labels_folder, \
+                                  'S%d_realworldsize.csv'%(self.subject))          
+                self.n_features = 3
+                self.cols_use = None
+            elif 'coco_things' in self.feature_set:
+                self.features_file = os.path.join(self.labels_folder, \
+                                  'S%d_cocolabs_binary.csv'%(self.subject))
+                
+                if 'supcateg' in self.feature_set:                    
+                    self.n_features = 12
+                    self.cols_use = np.arange(12)
+                else:
+                    # use all the basic-level coco things categories
+                    self.n_features = 80
+                    self.cols_use = np.arange(12,92)
+            elif 'coco_stuff' in self.feature_set:
+                self.features_file = os.path.join(self.labels_folder, \
+                                  'S%d_cocolabs_stuff_binary.csv'%(self.subject))
+                if 'supcateg' in self.feature_set:                    
+                    self.n_features = 16
+                    self.cols_use = np.arange(16)
+                else:
+                    self.n_features = 92     
+                    self.cols_use = np.arange(16, 108)
+            else:
+                raise ValueError('feature_set %s not recognized'%self.feature_set)
+                
+                
+        elif self.feature_set=='indoor_outdoor':
+            
             self.features_file = os.path.join(default_paths.stim_labels_root, \
                                           'S%d_indoor_outdoor.csv'%self.subject)
             self.same_labels_all_prfs=True
             self.n_features = 2
+            self.cols_use = None
             
-        elif self.use_pca_feats:
-            self.labels_folder = os.path.join(default_paths.stim_labels_root, \
-                                         'S%d_within_prf_grid%d_PCA'%(self.subject, self.which_prf_grid))
-            self.same_labels_all_prfs=False
-            self.features_file = os.path.join(self.labels_folder, \
-                          'S%d_%s_prf0_PCA.csv'%(self.subject, self.feature_set))
-            if self.feature_set=='coco_things_categ':
-                self.n_features = 80
-            elif self.feature_set=='coco_stuff_categ':
-                self.n_features = 92   
-                
         else:
 
             self.labels_folder = os.path.join(default_paths.stim_labels_root, \
@@ -57,7 +86,7 @@ class semantic_feature_loader:
                 elif 'material_diagnostic' in self.feature_set:
                     # will select just a sub-set of the coco things categories, based on
                     # whether the objects have material/color as a diagnostic feature or not
-                    assert(not self.remove_missing and not self.use_pca_feats)
+                    assert(not self.remove_missing)
                     groups_fn = os.path.join(default_paths.stim_labels_root, \
                                                    'Material_diagnostic_categ.npy')
                     material_groups = np.load(groups_fn, allow_pickle=True).item()                    
@@ -122,6 +151,12 @@ class semantic_feature_loader:
 
         return masks, partial_version_names
 
+    def get_feature_group_inds(self):
+        
+        group_inds = np.zeros((self.max_features,),dtype=int)
+            
+        return group_inds
+    
     def __load_precomputed_features__(self, image_inds, prf_model_index):
 
         if self.same_labels_all_prfs:
@@ -129,15 +164,9 @@ class semantic_feature_loader:
             coco_df = pd.read_csv(self.features_file, index_col=0)
             labels = np.array(coco_df)
             colnames = list(coco_df.keys())  
-            
-        elif self.use_pca_feats:            
-            self.features_file = os.path.join(self.labels_folder, \
-                          'S%d_%s_prf%d_PCA.csv'%(self.subject, self.feature_set, prf_model_index))
-            print('Loading pre-computed features from %s'%self.features_file)
-            pca_df = pd.read_csv(self.features_file, index_col=0, dtype=np.float32)
-            labels = np.array(pca_df)
-            colnames = ['pc%d'%pc for pc in range(labels.shape[1])]
-            
+            if self.cols_use is not None:
+                labels = labels[:,np.array(self.cols_use)]
+                colnames = [colnames[cc] for cc in self.cols_use]
         else:
             if self.feature_set=='natural_humanmade':
                 self.features_file = os.path.join(self.labels_folder, \
@@ -207,10 +236,7 @@ class semantic_feature_loader:
         print('using feature set: %s'%self.feature_set)        
         print(colnames)
 
-        if self.use_pca_feats:
-            self.is_defined_in_prf = np.zeros((self.max_features,),dtype=bool)
-            self.is_defined_in_prf[0:labels.shape[1]] = 1;
-        elif self.remove_missing:
+        if self.remove_missing:
             assert(labels.shape[1]==self.max_features)
             if self.feature_set=='coco_things_categ':
                 labels = labels[:,~self.things_inds_exclude]

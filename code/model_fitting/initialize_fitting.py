@@ -5,7 +5,7 @@ These are all semi-general functions that are run before model fitting (file nam
 
 import torch
 import time
-import os
+import os, sys
 import numpy as np
 import pandas as pd
 from datetime import datetime
@@ -43,8 +43,15 @@ def get_full_save_name(args):
     for fi, ft in enumerate(input_fitting_types):
         print(ft)
         if ft=='full_midlevel':
+            
             fitting_types += ['gabor_solo', 'pyramid_texture','sketch_tokens']
             model_name += 'full_midlevel'
+            
+        elif ft=='concat_midlevel':
+           
+            fitting_types += ['color_noavg','gabor_solo_noavg', 'pyramid_texture','sketch_tokens']
+            model_name += 'concat_midlevel'
+            assert(args.prfs_model_name=='texture')
             
         elif ft=='semantic':
             if args.semantic_feature_set=='all_coco':
@@ -93,7 +100,9 @@ def get_full_save_name(args):
             else:
                 model_name += '_OLS'
             model_name+='_%dori_%dsf'%(args.n_ori_gabor, args.n_sf_gabor)
-            if args.use_pca_gabor_feats:
+            if 'noavg' in ft:
+                model_name += '_noavg'
+            elif args.use_pca_gabor_feats:
                 model_name += '_pca'           
             
         elif 'sketch_tokens' in ft:      
@@ -104,22 +113,71 @@ def get_full_save_name(args):
                 model_name += 'sketch_tokens_residuals'
             else:        
                 model_name += 'sketch_tokens'
+            if args.use_grayscale_st_feats:
+                model_name += '_gray'
+            if 'noavg' in ft:
+                model_name += '_noavg'
+                if args.st_use_avgpool:
+                    model_name += '_avgpool'
+                else:
+                    model_name += '_maxpool'
+                model_name += '_poolsize%d'%args.st_pooling_size
+        
+        elif 'gist' in ft:
             
+            fitting_types += [ft]
+            model_name += 'gist_%dori'%(args.n_ori_gist)
+            if args.n_blocks_gist!=4:
+                model_name += '_%dblocks'%args.n_blocks_gist
+                
+        elif 'color' in ft:
+            fitting_types += [ft]
+            model_name += 'color_cielab_sat'
+            if 'noavg' in ft:
+                model_name += '_noavg'
+          
         elif 'alexnet' in ft:
             fitting_types += [ft]
             if 'ReLU' in args.alexnet_layer_name:
                 name = args.alexnet_layer_name.split('_')[0]
             else:
                 name = args.alexnet_layer_name
-            model_name += 'alexnet_%s'%name
+            if args.alexnet_blurface:
+                model_name += 'alexnet_blurface_%s'%name               
+            else:
+                model_name += 'alexnet_%s'%name
             if args.use_pca_alexnet_feats:
                 model_name += '_pca'
+            if 'noavg' in ft:
+                model_name += '_noavg'
                 
         elif 'clip' in ft:
             fitting_types += [ft]
-            model_name += 'clip_%s_%s'%(args.clip_model_architecture, args.clip_layer_name)
-            if args.use_pca_clip_feats:
+            if args.resnet_layer_name=='best_layer' and args.n_resnet_blocks_include<16:
+                layer_name = 'best_layer_of%d'%args.n_resnet_blocks_include
+            else:
+                layer_name = args.resnet_layer_name
+            model_name += 'clip_%s_%s'%(args.resnet_model_architecture, layer_name)
+            if args.use_pca_resnet_feats:
                 model_name += '_pca'
+            if 'noavg' in ft:
+                model_name += '_noavg'
+                
+        elif 'resnet' in ft:
+            fitting_types += [ft]
+            if args.resnet_layer_name=='best_layer' and args.n_resnet_blocks_include<16:
+                layer_name = 'best_layer_of%d'%args.n_resnet_blocks_include
+            else:
+                layer_name = args.resnet_layer_name
+            if args.resnet_blurface:
+                model_name += 'resnet_blurface_%s_%s'%(args.resnet_model_architecture, layer_name)
+            elif 'startingblurry' in ft:
+                model_name += 'resnet_%s_%s'%(args.resnet_training_type, layer_name)
+            else:
+                model_name += 'resnet_%s_%s'%(args.resnet_model_architecture, layer_name)
+            assert (args.use_pca_resnet_feats==True)
+            if 'noavg' in ft:
+                model_name += '_noavg'
                 
         else:
             raise ValueError('fitting type "%s" not recognized'%ft)
@@ -132,9 +190,9 @@ def get_full_save_name(args):
     if args.use_model_residuals:
         model_name += '_from_residuals'
     if not args.use_precomputed_prfs:
-        if 'alexnet' not in model_name:
+        if 'alexnet' not in model_name and args.which_prf_grid!=0:
             model_name += '_fit_pRFs'
-    elif len(args.prfs_model_name)>0:
+    elif len(args.prfs_model_name)>0 and 'concat_midlevel' not in model_name:
         model_name += '_use_%s_pRFs'%args.prfs_model_name
         
     if args.which_prf_grid!=5:
@@ -226,7 +284,9 @@ def get_lambdas(fitting_types, zscore_features=True, ridge=True):
             # will vary depending on actual feature value ranges, be sure to check the results carefully
             lambdas = np.logspace(np.log(0.01),np.log(10**1+0.01),10, dtype=np.float32, base=np.e) - 0.01
 
-        if np.any(['clip' in ft for ft in fitting_types]) or np.any(['alexnet' in ft for ft in fitting_types]):
+        if np.any(['clip' in ft for ft in fitting_types]) or \
+            np.any(['alexnet' in ft for ft in fitting_types]) or \
+            np.any(['resnet' in ft for ft in fitting_types]):
             
             lambdas = np.logspace(np.log(0.01),np.log(10**10+0.01),20, dtype=np.float32, base=np.e) - 0.01
             
@@ -243,7 +303,10 @@ def get_lambdas(fitting_types, zscore_features=True, ridge=True):
 def get_prf_models(which_grid=5, verbose=False):
 
     # models is three columns, x, y, sigma
-    if which_grid==1:
+    if which_grid==0:
+        # this is a placeholder for the models that have no pRFs (full-field features)
+        models = np.array([[None, None, None]])
+    elif which_grid==1:
         smin, smax = np.float32(0.04), np.float32(0.4)
         n_sizes = 8
         aperture_rf_range=1.1
@@ -303,6 +366,11 @@ def load_precomputed_prfs(subject, args):
     if len(args.prfs_model_name)==0 or args.prfs_model_name=='alexnet':
         # default is to use alexnet
         saved_prfs_fn = saved_fit_paths.alexnet_fit_paths[subject-1]
+    elif args.prfs_model_name=='mappingtask':
+        # these are just a discretized version of continuous pRF outputs, computed
+        # using independent mapping task data.
+        saved_prfs_fn = os.path.join(default_paths.save_fits_path,'S%02d'%subject, \
+                                     'mapping_task_prfs_grid%d'%args.which_prf_grid,'prfs.npy')
     elif args.prfs_model_name=='gabor':
         saved_prfs_fn = saved_fit_paths.gabor_fit_paths[subject-1]
     elif args.prfs_model_name=='texture':
@@ -318,18 +386,27 @@ def load_precomputed_prfs(subject, args):
 
     print('Loading pre-computed pRF estimates for all voxels from %s'%saved_prfs_fn)
     out = np.load(saved_prfs_fn, allow_pickle=True).item()
-    assert(out['average_image_reps']==True)
-    best_model_each_voxel = out['best_params'][5][:,0]
-    assert(out['which_prf_grid']==args.which_prf_grid)
-    
+    if 'prf_grid_inds' in list(out.keys()):
+        best_model_each_voxel = out['prf_grid_inds'][:,0]
+    else:
+        assert(out['average_image_reps']==True)
+        best_model_each_voxel = out['best_params'][5][:,0]
+        assert(out['which_prf_grid']==args.which_prf_grid)
+
     return best_model_each_voxel, saved_prfs_fn
 
-def load_best_model_layers(subject, model):
+def load_best_model_layers(subject, model, dnn_layers_use):
     
     if model=='clip':
         saved_best_layer_fn = saved_fit_paths.clip_fit_paths[subject-1]
+    elif model=='resnet':
+        saved_best_layer_fn = saved_fit_paths.resnet50_fit_paths[subject-1]
+    elif model=='resnet_blurface':
+        saved_best_layer_fn = saved_fit_paths.resnet50_blurface_fit_paths[subject-1]
     elif model=='alexnet':
         saved_best_layer_fn = saved_fit_paths.alexnet_fit_paths[subject-1]
+    elif model=='alexnet_blurface':
+        saved_best_layer_fn = saved_fit_paths.alexnet_blurface_fit_paths[subject-1]
     else:
         raise ValueError('for %s, best model layer not computed yet'%(model))
     
@@ -337,13 +414,25 @@ def load_best_model_layers(subject, model):
     
     out = np.load(saved_best_layer_fn, allow_pickle=True).item()
     assert(out['average_image_reps']==True)
-    if model=='alexnet':
-        layer_inds = [1,3,5,7,9]       
-    elif model=='clip':
-        layer_inds = np.arange(1,32,2)
-      
-    assert(np.all(['just_' in name for name in np.array(out['partial_version_names'])[layer_inds]]))
-    best_layer_each_voxel = np.argmax(out['val_r2'][:,layer_inds], axis=1)
+    if 'alexnet' in model:
+        layer_inds = np.array([1,3,5,7,9])       
+    elif ('clip' in model) or ('resnet' in model):
+        if 'n_resnet_blocks_include' in out.keys() and out['n_resnet_blocks_include']==4:
+            layer_inds = np.arange(1,8,2)
+            dnn_layers_use = np.arange(4)
+        elif 'n_resnet_blocks_include' not in out.keys() or out['n_resnet_blocks_include']==16:
+            layer_inds = np.arange(1,32,2)
+        else:
+            raise RuntimeError('need to check inputs for resnet layers to include')
+    
+    print(layer_inds, dnn_layers_use)
+    layer_inds_use = layer_inds[dnn_layers_use]
+    assert(np.all(['just_' in name for name in np.array(out['partial_version_names'])[layer_inds]]))   
+    names = [name.split('just_')[1] for name in np.array(out['partial_version_names'])[layer_inds_use]]
+    print('using %s layers:'%model)
+    print(names)
+    
+    best_layer_each_voxel = np.argmax(out['val_r2'][:,layer_inds_use], axis=1)
     unique, counts = np.unique(best_layer_each_voxel, return_counts=True)
     print('layer indices:')
     print(unique)
@@ -360,8 +449,12 @@ def load_labels_each_prf(subject, which_prf_grid, image_inds, models, verbose=Fa
     Makes an array [n_trials x n_discrim_types x n_prfs]
     """
 
-    labels_folder = os.path.join(default_paths.stim_labels_root, \
+    if which_prf_grid==0:
+        labels_folder = default_paths.stim_labels_root
+    else:
+        labels_folder = os.path.join(default_paths.stim_labels_root, \
                                      'S%d_within_prf_grid%d'%(subject, which_prf_grid))
+        
     groups = np.load(os.path.join(default_paths.stim_labels_root,\
                                   'All_concat_labelgroupnames.npy'), allow_pickle=True).item()
     col_names = groups['col_names_all']
@@ -377,8 +470,12 @@ def load_labels_each_prf(subject, which_prf_grid, image_inds, models, verbose=Fa
         if debug and prf_model_index>1:
             continue
             
-        fn2load = os.path.join(labels_folder, \
+        if which_prf_grid==0:
+            fn2load = os.path.join(labels_folder,'S%d_concat.csv'%subject)
+        else:
+            fn2load = os.path.join(labels_folder, \
                                   'S%d_concat_prf%d.csv'%(subject, prf_model_index))
+            
         concat_df = pd.read_csv(fn2load, index_col=0)
         labels = np.array(concat_df)
         labels = labels[image_inds,:]
@@ -559,127 +656,240 @@ def save_model_residuals(voxel_data, voxel_data_pred, output_dir, model_name, \
                     'average_image_reps': args.average_image_reps})
     
     
-def make_feature_loaders(args, fitting_types, vi):
+def make_feature_loaders(args, fitting_types, vi, dnn_layers_use=None):
     
-    
+    if args.image_set is None:
+        sub = args.subject
+        pca_subject = None
+    else:
+        sub = None
+        pca_subject = args.subject
+        
     fe = []
     fe_names = []
     for ft in fitting_types:   
 
-        if 'gabor_solo' in ft:
-            feat_loader = fwrf_features.fwrf_feature_loader(subject=args.subject,\
-                                                            which_prf_grid=args.which_prf_grid,\
+        if 'gabor' in ft:
+            use_noavg = ('noavg' in ft)
+            if args.use_fullimage_gabor_feats:
+                prf_grid=0
+            else:
+                prf_grid = args.which_prf_grid
+            feat_loader = fwrf_features.fwrf_feature_loader(subject=sub,\
+                                                            image_set=args.image_set,\
+                                                            which_prf_grid=prf_grid,\
                                                             feature_type='gabor_solo',\
                                                             n_ori=args.n_ori_gabor, n_sf=args.n_sf_gabor,\
                                                             nonlin_fn=args.gabor_nonlin_fn, \
-                                                            use_pca_feats=args.use_pca_gabor_feats)
-
+                                                            use_pca_feats=args.use_pca_gabor_feats, \
+                                                            pca_subject = pca_subject,
+                                                            use_noavg=use_noavg)
             fe.append(feat_loader)
             fe_names.append(ft)
+          
         elif 'pyramid' in ft:
-            feat_loader = fwrf_features.fwrf_feature_loader(subject=args.subject,\
+            feat_loader = fwrf_features.fwrf_feature_loader(subject=sub,\
+                                                            image_set=args.image_set,\
                                                             which_prf_grid=args.which_prf_grid, \
                                                             feature_type='pyramid_texture',\
                                                             n_ori=args.n_ori_pyr, n_sf=args.n_sf_pyr,\
                                                             pca_type=args.pyr_pca_type,\
                                                             do_varpart=args.do_pyr_varpart,\
                                                             group_all_hl_feats=args.group_all_hl_feats, \
-                                                            include_solo_models=False)       
+                                                            include_solo_models=False, \
+                                                            pca_subject = pca_subject)       
             fe.append(feat_loader)
             fe_names.append(ft)
             
         elif 'sketch_tokens' in ft:
-            feat_loader = fwrf_features.fwrf_feature_loader(subject=args.subject,\
-                                                            which_prf_grid=args.which_prf_grid, \
+            use_noavg = ('noavg' in ft)
+            if args.use_fullimage_st_feats:
+                prf_grid=0
+            else:
+                prf_grid = args.which_prf_grid
+            feat_loader = fwrf_features.fwrf_feature_loader(subject=sub,\
+                                                            image_set=args.image_set,\
+                                                            which_prf_grid=prf_grid, \
                                                             feature_type='sketch_tokens',\
                                                             use_pca_feats = args.use_pca_st_feats, \
-                                                            use_residual_st_feats = args.use_residual_st_feats)
+                                                            use_residual_st_feats = args.use_residual_st_feats, \
+                                                            use_grayscale_st_feats = args.use_grayscale_st_feats, \
+                                                            pca_subject = pca_subject,
+                                                            st_pooling_size = args.st_pooling_size, \
+                                                            st_use_avgpool = args.st_use_avgpool, \
+                                                            use_noavg=use_noavg)
             fe.append(feat_loader)
             fe_names.append(ft)
-
+            
+        elif 'color' in ft:
+            use_noavg = ('noavg' in ft)
+            if args.use_fullimage_color_feats:
+                prf_grid=0
+            else:
+                prf_grid = args.which_prf_grid
+            feat_loader = fwrf_features.fwrf_feature_loader(subject=sub,\
+                                                            image_set=args.image_set,\
+                                                            which_prf_grid=prf_grid, \
+                                                            feature_type='color',
+                                                            pca_subject = pca_subject,
+                                                            use_noavg=use_noavg)
+            fe.append(feat_loader)
+            fe_names.append(ft)
+            
+        elif 'gist' in ft:
+            
+            prf_grid=0
+            feat_loader = fwrf_features.fwrf_feature_loader(subject=sub,\
+                                                            image_set=args.image_set,\
+                                                            which_prf_grid=prf_grid, \
+                                                            n_ori = args.n_ori_gist, \
+                                                            n_blocks = args.n_blocks_gist, \
+                                                            feature_type='gist')
+            fe.append(feat_loader)
+            fe_names.append(ft)
+            
         elif 'alexnet' in ft:
-            n_dnn_layers = 5;
-            if args.alexnet_layer_name=='all_conv':
-                names = ['Conv%d_ReLU'%(ll+1) for ll in range(n_dnn_layers)]
-                for ll in range(n_dnn_layers):
-                    feat_loader = fwrf_features.fwrf_feature_loader(subject=args.subject,\
-                                                            which_prf_grid=args.which_prf_grid, \
-                                                            feature_type='alexnet',layer_name=names[ll],\
+            use_noavg = ('noavg' in ft)
+            if args.use_fullimage_alexnet_feats:
+                prf_grid=0
+            else:
+                prf_grid = args.which_prf_grid
+            if args.alexnet_layer_name=='all_conv' or args.alexnet_layer_name=='all_layers':
+                names = ['Conv%d_ReLU'%(ll) for ll in [1,2,3,4,5]]
+                if args.alexnet_layer_name=='all_layers':
+                    names += ['FC%d_ReLU'%(ll) for ll in [6,7]]
+                print('alexnet layer_names: %s'%names)
+                for ll in range(len(names)):
+                    feat_loader = fwrf_features.fwrf_feature_loader(subject=sub,\
+                                                            image_set=args.image_set,\
+                                                            which_prf_grid=prf_grid, \
+                                                            feature_type='alexnet',\
+                                                            layer_name=names[ll],\
                                                             use_pca_feats = args.use_pca_alexnet_feats,\
-                                                            padding_mode = args.alexnet_padding_mode)
+                                                            padding_mode = args.alexnet_padding_mode, \
+                                                            blurface = args.alexnet_blurface, \
+                                                            pca_subject = pca_subject,
+                                                            use_noavg=use_noavg)
                     fe.append(feat_loader)   
                     fe_names.append('alexnet_%s'%names[ll])
             elif args.alexnet_layer_name=='best_layer':
                 this_layer_name = 'Conv%d_ReLU'%(vi+1)
                 print(this_layer_name)
-                feat_loader = fwrf_features.fwrf_feature_loader(subject=args.subject,\
-                                                            which_prf_grid=args.which_prf_grid, \
-                                                            feature_type='alexnet',layer_name=this_layer_name,\
+                feat_loader = fwrf_features.fwrf_feature_loader(subject=sub,\
+                                                            image_set=args.image_set,\
+                                                            which_prf_grid=prf_grid, \
+                                                            feature_type='alexnet',\
+                                                            layer_name=this_layer_name,\
                                                             use_pca_feats = args.use_pca_alexnet_feats,\
-                                                            padding_mode = args.alexnet_padding_mode)
+                                                            padding_mode = args.alexnet_padding_mode, \
+                                                            blurface = args.alexnet_blurface, \
+                                                            pca_subject = pca_subject,
+                                                            use_noavg=use_noavg)
                 fe.append(feat_loader)   
                 fe_names.append(ft)
             else:
-                feat_loader = fwrf_features.fwrf_feature_loader(subject=args.subject,\
-                                                            which_prf_grid=args.which_prf_grid, \
-                                                            feature_type='alexnet',layer_name=args.alexnet_layer_name,\
+                feat_loader = fwrf_features.fwrf_feature_loader(subject=sub,\
+                                                            image_set=args.image_set,\
+                                                            which_prf_grid=prf_grid, \
+                                                            feature_type='alexnet',\
+                                                            layer_name=args.alexnet_layer_name,\
                                                             use_pca_feats = args.use_pca_alexnet_feats,\
-                                                            padding_mode = args.alexnet_padding_mode)
+                                                            padding_mode = args.alexnet_padding_mode, \
+                                                            blurface = args.alexnet_blurface, \
+                                                            pca_subject = pca_subject,
+                                                            use_noavg=use_noavg)
                 fe.append(feat_loader)
                 fe_names.append(ft)
 
-        elif 'clip' in ft:
-            n_dnn_layers = 16;
-            if args.clip_layer_name=='all_resblocks':
-                names = ['block%d'%(ll) for ll in range(n_dnn_layers)]
-                for ll in range(n_dnn_layers):
-                    feat_loader = fwrf_features.fwrf_feature_loader(subject=args.subject,\
-                                                            which_prf_grid=args.which_prf_grid, \
-                                                            feature_type='clip',layer_name=names[ll],\
-                                                            model_architecture=args.clip_model_architecture,\
-                                                            use_pca_feats=args.use_pca_clip_feats)
+        elif 'clip' in ft or 'resnet' in ft:
+            
+            use_noavg = ('noavg' in ft)
+            if args.use_fullimage_resnet_feats:
+                prf_grid=0
+            else:
+                prf_grid = args.which_prf_grid
+                
+            if 'clip' in ft:
+                training_type='clip'
+            elif args.resnet_blurface:
+                training_type='blurface'
+            elif 'startingblurry' in ft:
+                training_type = args.resnet_training_type
+            else:
+                training_type='imgnet'
+                
+            if args.resnet_layer_name=='all_resblocks':
+                names = ['block%d'%(ll) for ll in dnn_layers_use]
+                for ll in range(len(names)):
+                    feat_loader = fwrf_features.fwrf_feature_loader(subject=sub,\
+                                                            image_set=args.image_set,\
+                                                            which_prf_grid=prf_grid, \
+                                                            feature_type='resnet',layer_name=names[ll],\
+                                                            model_architecture=args.resnet_model_architecture,\
+                                                            use_pca_feats=args.use_pca_resnet_feats, \
+                                                            training_type=training_type,
+                                                            use_noavg=use_noavg,
+                                                            pca_subject = pca_subject)
                     fe.append(feat_loader)   
-                    fe_names.append('clip_%s'%names[ll])
-            elif args.clip_layer_name=='best_layer':
+                    fe_names.append('resnet_%s'%names[ll])
+            elif args.resnet_layer_name=='best_layer':
                 this_layer_name = 'block%d'%(vi)
                 print(this_layer_name)
-                feat_loader = fwrf_features.fwrf_feature_loader(subject=args.subject,\
-                                                            which_prf_grid=args.which_prf_grid, \
-                                                            feature_type='clip',layer_name=this_layer_name,\
-                                                            model_architecture=args.clip_model_architecture,\
-                                                            use_pca_feats=args.use_pca_clip_feats)
+                feat_loader = fwrf_features.fwrf_feature_loader(subject=sub,\
+                                                            image_set=args.image_set,\
+                                                            which_prf_grid=prf_grid, \
+                                                            feature_type='resnet',layer_name=this_layer_name,\
+                                                            model_architecture=args.resnet_model_architecture,\
+                                                            use_pca_feats=args.use_pca_resnet_feats, \
+                                                            training_type=training_type,
+                                                            use_noavg=use_noavg,
+                                                            pca_subject = pca_subject)
                 fe.append(feat_loader)
                 fe_names.append(ft) 
             else:
-                feat_loader = fwrf_features.fwrf_feature_loader(subject=args.subject,\
-                                                            which_prf_grid=args.which_prf_grid, \
-                                                            feature_type='clip',layer_name=args.clip_layer_name,\
-                                                            model_architecture=args.clip_model_architecture,\
-                                                            use_pca_feats=args.use_pca_clip_feats)
+                feat_loader = fwrf_features.fwrf_feature_loader(subject=sub,\
+                                                            image_set=args.image_set,\
+                                                            which_prf_grid=prf_grid, \
+                                                            feature_type='resnet',\
+                                                            layer_name=args.resnet_layer_name,\
+                                                            model_architecture=args.resnet_model_architecture,\
+                                                            use_pca_feats=args.use_pca_resnet_feats, \
+                                                            training_type=training_type,
+                                                            use_noavg=use_noavg,
+                                                            pca_subject = pca_subject)
                 fe.append(feat_loader)
                 fe_names.append(ft)   
 
         elif 'semantic' in ft:
-            this_feature_set = ft.split('semantic_')[1]
-            if '_pca' in this_feature_set:
-                this_feature_set = this_feature_set.split('_pca')[0]
-                use_pca_feats=True
+            assert(sub is not None)
+            if args.use_fullimage_sem_feats:
+                prf_grid=0
             else:
-                use_pca_feats=False
+                prf_grid = args.which_prf_grid
+            this_feature_set = ft.split('semantic_')[1]
+            
             print('semantic feature set: %s'%this_feature_set)
-            print('use pca: %s'%use_pca_feats)
-            feat_loader = semantic_features.semantic_feature_loader(subject=args.subject,\
-                                                            which_prf_grid=args.which_prf_grid, \
+            feat_loader = semantic_features.semantic_feature_loader(subject=sub,\
+                                                            which_prf_grid=prf_grid, \
                                                             feature_set=this_feature_set, \
-                                                            use_pca_feats=use_pca_feats, \
                                                             remove_missing=False)
             fe.append(feat_loader)
             fe_names.append(ft)
 
     # Now combine subsets of features into a single module
     if len(fe)>1:
+        if args.fitting_type2=='semantic' and args.fitting_type3=='':
+            print('trying to compute lambda_groups')
+            n_vis_fts = np.sum(['semantic' not in ft for ft in fitting_types])
+            n_sem_fts = np.sum(['semantic' in ft for ft in fitting_types])
+            lambda_groups = np.array([0 for ii in range(n_vis_fts)] + [1 for ii in range(n_sem_fts)])
+            print(lambda_groups)
+            sys.stdout.flush()
+        else:
+            lambda_groups = np.arange(len(fe))
         feat_loader_full = merge_features.combined_feature_loader(fe, fe_names, do_varpart = args.do_varpart,\
-                                                                  include_solo_models=args.include_solo_models)
+                                                                  include_solo_models=args.include_solo_models, 
+                                                                  lambda_groups = lambda_groups)
     else:
         feat_loader_full = fe[0]
         

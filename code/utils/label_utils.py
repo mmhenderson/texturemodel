@@ -195,138 +195,55 @@ def write_indoor_outdoor_csv(subject):
     stuff_cat_objects, stuff_cat_names, stuff_cat_ids, stuff_supcat_names, stuff_ids_each_supcat = \
             coco_utils.get_coco_cat_info(coco_utils.coco_stuff_val)
 
-    must_be_indoor = np.array([0, 0, 0, 0, 0, 0, 0, 0, \
-                 0, 0, 0, 0, 0, 0, 0, 0, \
-                 0, 0, 0, 0, 0, 0, 0, 0, \
-                 0, 0, 0, 0, 0, 0, 0, 0, \
-                 0, 0, 0, 0, 0, 0, 0, 0, \
-                 0, 0, 0, 0, 0, 0, 0, 0, \
-                 0, 0, 0, 0, 0, 0, 0, 0, \
-                 0, 1, 1, 1, 1, 1, 1, 0, \
-                 1, 1, 1, 0, 1, 1, 1, 1, \
-                 1, 0, 1, 1, 0, 0, 1, 1 ])
-
-    must_be_outdoor = np.array([0, 0, 1, 1, 1, 1, 1, 1, 
-                            1, 1, 1, 1, 1, 1, 0, 0, \
-                            0, 1, 1, 1, 1, 1, 1, 1, \
-                            0, 0, 0, 0, 0, 1, 1, 1, \
-                            1, 1, 1, 1, 1, 1, 1, 0, \
-                            0, 0, 0, 0, 0, 0, 0, 0, \
-                            0, 0, 0, 0, 0, 0, 0, 0, \
-                            0, 0, 0, 0, 0, 0, 0, 0, \
-                            0, 0, 0, 0, 0, 0, 0, 0, \
-                            0, 0, 0, 0, 0, 0, 0, 0])
-
-    print('things labels assumed to be indoor:')
-    print(np.array(cat_names)[must_be_indoor==1])
-    print('things labels assumed to be outdoor:')
-    print(np.array(cat_names)[must_be_outdoor==1])
-    print('things labels that are ambiguous:')
-    print(np.array(cat_names)[(must_be_outdoor==0) & (must_be_indoor==0)])
-
-
-
-    stuff_must_be_indoor = np.array([0, 0, 0, 0, 0, 0, 1, 0, \
-                           0, 1, 1, 1, 0, 0, 0, 1, \
-                           1, 1, 1, 0, 0, 0, 1, 0, \
-                           0, 1, 1, 0, 0, 0, 0, 1, \
-                           0, 0, 0, 0, 0, 0, 0, 0, \
-                           0, 0, 0, 0, 0, 0, 0, 0, \
-                           0, 1, 0, 0, 0, 0, 0, 0, \
-                           0, 0, 0, 0, 1, 0, 0, 0, \
-                           1, 0, 0, 0, 0, 0, 0, 0, \
-                           0, 0, 0, 0, 0, 0, 0, 0, \
-                           0, 0, 1, 0, 1, 0, 0, 0, \
-                           1, 0, 0, 0])
-
-    stuff_must_be_outdoor = np.array([0, 0, 1, 1, 1, 1, 0, 0, \
-                            0, 0, 0, 0, 0, 0, 1, 0, \
-                            0, 0, 0, 1, 0, 1, 0, 0, \
-                            0, 0, 0, 0, 1, 0, 0, 0, \
-                            1, 1, 0, 1, 1, 1, 0, 0, \
-                            0, 0, 1, 1, 1, 0, 0, 0, \
-                            1, 0, 0, 0, 0, 1, 0, 1, \
-                            1, 1, 1, 1, 0, 0, 1, 1, \
-                            0, 1, 1, 1, 0, 0, 0, 1, \
-                            0, 0, 1, 0, 0, 1, 0, 0, \
-                            0, 0, 0, 0, 0, 0, 0, 0, \
-                            0, 0, 0, 0])
-
-    print('stuff labels assumed to be indoor:')
-    print(np.array(stuff_cat_names)[stuff_must_be_indoor==1])
-    print('stuff labels assumed to be outdoor:')
-    print(np.array(stuff_cat_names)[stuff_must_be_outdoor==1])
-    print('stuff labels that are ambiguous:')
-    print(np.array(stuff_cat_names)[(stuff_must_be_outdoor==0) & (stuff_must_be_indoor==0)])
-
+    
+    fn2load = os.path.join(os.path.dirname(os.path.abspath(__file__)),'files','Indoor_outdoor_categ.npy')
+    d = np.load(fn2load, allow_pickle=True).item()
+    things_keys = np.array(list(d.keys()))
+    things_values = np.array(list(d.values()))
+    assert(np.all([kk==cc for kk,cc in zip(things_keys, cat_names)]))
+     
+    fn2load = os.path.join(os.path.dirname(os.path.abspath(__file__)),'files','Indoor_outdoor_stuff_categ.npy')
+    d = np.load(fn2load, allow_pickle=True).item()
+    stuff_keys = np.array(list(d.keys()))
+    stuff_values = np.array(list(d.values()))
+    assert(np.all([kk==cc for kk,cc in zip(stuff_keys, stuff_cat_names)]))
+          
     fn2load = os.path.join(default_paths.stim_labels_root, 'S%d_cocolabs_binary.csv'%subject)
     coco_df = pd.read_csv(fn2load, index_col = 0)
-
     cat_labels = np.array(coco_df)[:,12:92]
 
-    indoor_columns = np.array([cat_labels[:,cc] for cc in np.where(must_be_indoor)[0]]).T
-    indoor_inds_things = np.any(indoor_columns, axis=1)
-    indoor_sum_things = np.sum(indoor_columns==1, axis=1)
-
-    outdoor_columns = np.array([cat_labels[:,cc] for cc in np.where(must_be_outdoor)[0]]).T
-    outdoor_inds_things = np.any(outdoor_columns, axis=1)
-    outdoor_sum_things = np.sum(outdoor_columns==1, axis=1)
-
-    np.mean(outdoor_inds_things)
-
+    indoor_things_sum = np.sum(cat_labels[:,things_values=='indoor'], axis=1)
+    outdoor_things_sum = np.sum(cat_labels[:,things_values=='outdoor'], axis=1)
+    
     fn2load = os.path.join(default_paths.stim_labels_root, 'S%d_cocolabs_stuff_binary.csv'%subject)
     coco_stuff_df = pd.read_csv(fn2load, index_col=0)
-
     stuff_cat_labels = np.array(coco_stuff_df)[:,16:108]
 
-    indoor_columns = np.array([stuff_cat_labels[:,cc] for cc in np.where(stuff_must_be_indoor)[0]]).T
-    indoor_inds_stuff = np.any(indoor_columns, axis=1)
-    indoor_sum_stuff = np.sum(indoor_columns==1, axis=1)
+    indoor_stuff_sum = np.sum(stuff_cat_labels[:,stuff_values=='indoor'], axis=1)
+    outdoor_stuff_sum = np.sum(stuff_cat_labels[:,stuff_values=='outdoor'], axis=1)
 
-    outdoor_columns = np.array([stuff_cat_labels[:,cc] for cc in np.where(stuff_must_be_outdoor)[0]]).T
-    outdoor_inds_stuff = np.any(outdoor_columns, axis=1)
-    outdoor_sum_stuff = np.sum(outdoor_columns==1, axis=1)
+    indoor_sum = indoor_things_sum + indoor_stuff_sum
+    outdoor_sum = outdoor_things_sum + outdoor_stuff_sum
 
-    outdoor_all = outdoor_inds_things | outdoor_inds_stuff
-    indoor_all = indoor_inds_things | indoor_inds_stuff
+    has_indoor = indoor_sum>0 
+    has_outdoor = outdoor_sum>0 
 
-    ambiguous = ~outdoor_all & ~indoor_all
-    conflict = outdoor_all & indoor_all
-
-    print('\n')
-    print('proportion of images that are ambiguous (no indoor or outdoor object annotation):')
-    print(np.mean(ambiguous))
-    print('proportion of images with conflict (have annotation for both indoor and outdoor object):')
-    print(np.mean(conflict))
-
-    conflict_indoor = conflict & (indoor_sum_things+indoor_sum_stuff > outdoor_sum_things+outdoor_sum_stuff)
-    conflict_outdoor = conflict & (outdoor_sum_things+outdoor_sum_stuff > indoor_sum_things+indoor_sum_stuff)
-    conflict_unresolved = conflict & (indoor_sum_things+indoor_sum_stuff == outdoor_sum_things+outdoor_sum_stuff)
-    print('conflicting images that can be resolved to indoor/outdoor/tie based on number annotations:')
-    print([np.mean(conflict_indoor), np.mean(conflict_outdoor), np.mean(conflict_unresolved)])
-
+    conflict = has_indoor & has_outdoor
+    conflict_indoor = conflict & (indoor_sum > outdoor_sum)
+    conflict_outdoor = conflict & (outdoor_sum > indoor_sum)
+   
     # correct the conflicting images that we are able to resolve
+    has_outdoor[conflict_indoor] = 0
+    has_indoor[conflict_outdoor] = 0
 
-    outdoor_all[conflict_indoor] = 0
-    indoor_all[conflict_outdoor] = 0
-
-    ambiguous = ~outdoor_all & ~indoor_all
-    conflict = outdoor_all & indoor_all
-
-    print('\nafter resolving conflicts based on number of annotations:')
-    print('proportion of images that are ambiguous (no indoor or outdoor object annotation):')
-    print(np.mean(ambiguous))
-    print('proportion of images with conflict (have annotation for both indoor and outdoor object):')
-    print(np.mean(conflict))
-
-
-    indoor_outdoor_df = pd.DataFrame({'has_indoor': indoor_all, 'has_outdoor': outdoor_all})
+    indoor_outdoor_df = pd.DataFrame({'has_indoor': has_indoor, 'has_outdoor': has_outdoor})
     fn2save = os.path.join(default_paths.stim_labels_root, 'S%d_indoor_outdoor.csv'%subject)
 
     print('Saving to %s'%fn2save)
     indoor_outdoor_df.to_csv(fn2save, header=True)
 
     return
+
 
 
 def write_natural_humanmade_csv(subject, which_prf_grid, debug=False):
@@ -341,58 +258,54 @@ def write_natural_humanmade_csv(subject, which_prf_grid, debug=False):
     stuff_cat_objects, stuff_cat_names, stuff_cat_ids, stuff_supcat_names, stuff_ids_each_supcat = \
             coco_utils.get_coco_cat_info(coco_utils.coco_stuff_val) 
 
-    must_be_natural = np.array([1,0,0,0,0,0,0,0,0,0,0,0,\
-                           0,0,1,1,1,1,1,1,1,1,1,1,\
-                           0,0,0,0,0,0,0,0,0,0,0,0,\
-                           0,0,0,0,0,0,0,0,0,0,1,1,\
-                           0,1,1,1,0,0,0,0,0,0,1,0,\
-                           0,0,0,0,0,0,0,0,0,0,0,0,\
-                           0,0,0,0,0,0,0,0], dtype=bool)
+    fn2load = os.path.join(os.path.dirname(os.path.abspath(__file__)),'files','Natural_categ.npy')
+    d = np.load(fn2load, allow_pickle=True).item()
+    things_keys = np.array(list(d.keys()))
+    things_values = np.array(list(d.values()))
+    assert(np.all([kk==cc for kk,cc in zip(things_keys, cat_names)]))
+     
+    fn2load = os.path.join(os.path.dirname(os.path.abspath(__file__)),'files','Natural_stuff_categ.npy')
+    d = np.load(fn2load, allow_pickle=True).item()
+    stuff_keys = np.array(list(d.keys()))
+    stuff_values = np.array(list(d.values()))
+    assert(np.all([kk==cc for kk,cc in zip(stuff_keys, stuff_cat_names)]))
+          
+    # first making labels for entire image
+    fn2load = os.path.join(default_paths.stim_labels_root,'S%d_cocolabs_binary.csv'%(subject))
+    coco_df = pd.read_csv(fn2load, index_col = 0)
+    cat_labels = np.array(coco_df)[:,12:92]
+    natur_things_sum = np.sum(cat_labels[:,things_values=='natur'], axis=1)
+    human_things_sum = np.sum(cat_labels[:,things_values=='human'], axis=1)
+ 
+    fn2load = os.path.join(default_paths.stim_labels_root,'S%d_cocolabs_stuff_binary.csv'%(subject))
+    coco_stuff_df = pd.read_csv(fn2load, index_col=0)
+    stuff_cat_labels = np.array(coco_stuff_df)[:,16:108]
+    natur_stuff_sum = np.sum(stuff_cat_labels[:,stuff_values=='natur'], axis=1)
+    human_stuff_sum = np.sum(stuff_cat_labels[:,stuff_values=='human'], axis=1)
 
-    must_be_humanmade = np.array([0,1,1,1,1,1,1,1,1,1,1,1,\
-                             1,1,0,0,0,0,0,0,0,0,0,0,\
-                             1,1,1,1,1,1,1,1,1,1,1,1,\
-                             1,1,1,1,1,1,1,1,1,1,0,0,\
-                             0,0,0,0,0,0,0,0,1,1,0,1,\
-                             1,1,1,1,1,1,1,1,1,1,1,1,\
-                             1,1,1,1,1,1,1,1], dtype=bool)
+    natur_sum = natur_things_sum + natur_stuff_sum
+    human_sum = human_things_sum + human_stuff_sum
+    has_natur = natur_sum>0 
+    has_human = human_sum>0 
+    
+    # correct the conflicting images by comparing sums...
+    conflict = has_natur & has_human
+    conflict_natur = conflict & (natur_sum > human_sum)
+    conflict_human = conflict & (human_sum > natur_sum)
+    has_human[conflict_natur] = 0
+    has_natur[conflict_human] = 0
 
-    print('things labels assumed to be natural:')
-    print(np.array(cat_names)[must_be_natural==1])
-    print('things labels assumed to be humanmade:')
-    print(np.array(cat_names)[must_be_humanmade==1])
-    print('things labels that are ambiguous:')
-    print(np.array(cat_names)[(must_be_humanmade==0) & (must_be_natural==0)])
+    natural_humanmade_df = pd.DataFrame({'has_natural': has_natur, 'has_humanmade': has_human})
+    fn2save = os.path.join(default_paths.stim_labels_root, 'S%d_natural_humanmade.csv'%(subject))
+    print('Saving to %s'%fn2save)
+    natural_humanmade_df.to_csv(fn2save, header=True)
 
-    stuff_must_be_natural = np.array([0,0,1,0,0,1,0,0,\
-                  0,0,0,0,0,0,1,0,0,0,0,1, \
-                  0,0,0,0,0,0,0,1,1,0,1,0, \
-                  1,0,0,1,0,1,0,0,0,0,1,1, \
-                  1,0,0,0,0,0,1,0,0,1,0,0, \
-                  1,0,1,0,0,0,1,1,0,1,0,1, \
-                  0,0,1,1,0,0,0,0,0,1,1,0, \
-                  0,0,0,0,0,0,1,1,0,0,0,0], dtype=bool)
-
-    stuff_must_be_humanmade = np.array([1,1,0,1,1,0,1,1, \
-                             1,1,1,1,1,1,0,1,1,1,1,0, \
-                             1,1,1,1,1,1,1,0,0,0,0,1, \
-                             0,0,0,0,1,0,0,1,1,1,0,0, \
-                             0,1,1,1,1,1,0,1,1,0,1,1, \
-                             0,1,0,1,1,0,0,0,1,0,1,0, \
-                             0,1,0,0,1,1,1,1,1,0,0,1, \
-                             1,1,1,1,1,1,0,0,1,1,0,0], dtype=bool)
-
-    print('stuff labels assumed to be natural:')
-    print(np.array(stuff_cat_names)[stuff_must_be_natural==1])
-    print('stuff labels assumed to be humanmade:')
-    print(np.array(stuff_cat_names)[stuff_must_be_humanmade==1])
-    print('stuff labels that are ambiguous:')
-    print(np.array(stuff_cat_names)[(stuff_must_be_humanmade==0) & (stuff_must_be_natural==0)])
-
+    # then pRF-specific labels
     models = initialize_fitting.get_prf_models(which_grid=which_prf_grid)    
     n_prfs = len(models)
     labels_folder = os.path.join(default_paths.stim_labels_root, 'S%d_within_prf_grid%d'%(subject, \
                                                                                         which_prf_grid))
+
     for prf_model_index in range(n_prfs):
              
         if debug and prf_model_index>1:
@@ -401,50 +314,24 @@ def write_natural_humanmade_csv(subject, which_prf_grid, debug=False):
         fn2load = os.path.join(labels_folder, \
                               'S%d_cocolabs_binary_prf%d.csv'%(subject, prf_model_index))
         coco_df = pd.read_csv(fn2load, index_col = 0)
-
         cat_labels = np.array(coco_df)[:,12:92]
-
-        natural_columns = np.array([cat_labels[:,cc] for cc in np.where(must_be_natural)[0]]).T
-        natural_inds_things = np.any(natural_columns, axis=1)
-        natural_sum_things = np.sum(natural_columns==1, axis=1)
-
-        humanmade_columns = np.array([cat_labels[:,cc] for cc in np.where(must_be_humanmade)[0]]).T
-        humanmade_inds_things = np.any(humanmade_columns, axis=1)
-        humanmade_sum_things = np.sum(humanmade_columns==1, axis=1)
-
-        np.mean(humanmade_inds_things)
-
+        natur_things_sum = np.sum(cat_labels[:,things_values=='natur'], axis=1)
+        human_things_sum = np.sum(cat_labels[:,things_values=='human'], axis=1)
+    
         fn2load = os.path.join(labels_folder, \
                               'S%d_cocolabs_stuff_binary_prf%d.csv'%(subject, prf_model_index))
         coco_stuff_df = pd.read_csv(fn2load, index_col=0)
-
         stuff_cat_labels = np.array(coco_stuff_df)[:,16:108]
+        natur_stuff_sum = np.sum(stuff_cat_labels[:,stuff_values=='natur'], axis=1)
+        human_stuff_sum = np.sum(stuff_cat_labels[:,stuff_values=='human'], axis=1)
+    
+        natur_sum = natur_things_sum + natur_stuff_sum
+        human_sum = human_things_sum + human_stuff_sum
+        has_natur = natur_sum>0 
+        has_human = human_sum>0 
 
-        natural_columns = np.array([stuff_cat_labels[:,cc] for cc in np.where(stuff_must_be_natural)[0]]).T
-        natural_inds_stuff = np.any(natural_columns, axis=1)
-        natural_sum_stuff = np.sum(natural_columns==1, axis=1)
-
-        humanmade_columns = np.array([stuff_cat_labels[:,cc] for cc in np.where(stuff_must_be_humanmade)[0]]).T
-        humanmade_inds_stuff = np.any(humanmade_columns, axis=1)
-        humanmade_sum_stuff = np.sum(humanmade_columns==1, axis=1)
-
-        humanmade_all = humanmade_inds_things | humanmade_inds_stuff
-        natural_all = natural_inds_things | natural_inds_stuff
-        
-        ambiguous = ~humanmade_all & ~natural_all
-        conflict = humanmade_all & natural_all
-
-        print(np.mean(conflict))
-
-        print('\n')
-        print('proportion of images that are ambiguous (no natural or humanmade object annotation):')
-        print(np.mean(ambiguous))
-        print('proportion of images with conflict (have annotation for both natural and humanmade object):')
-        print(np.mean(conflict))
-
-        natural_humanmade_df = pd.DataFrame({'has_natural': natural_all, 'has_humanmade': humanmade_all})
+        natural_humanmade_df = pd.DataFrame({'has_natural': has_natur, 'has_humanmade': has_human})
         fn2save = os.path.join(labels_folder, 'S%d_natural_humanmade_prf%d.csv'%(subject, prf_model_index))
-
         print('Saving to %s'%fn2save)
         natural_humanmade_df.to_csv(fn2save, header=True)
 
@@ -471,6 +358,33 @@ def write_realworldsize_csv(subject, which_prf_grid, debug=False):
         print('things categories with size %d:'%ii)
         print(np.array(cat_names)[categ_size_labels[ii,:]])
         
+        
+    # first making labels for entire image
+    fn2load = os.path.join(default_paths.stim_labels_root,'S%d_cocolabs_binary.csv'%(subject))
+    coco_df = pd.read_csv(fn2load, index_col = 0)
+    cat_labels = np.array(coco_df)[:,12:92]
+    
+    sum_small = np.sum(cat_labels[:,categ_size_labels[0,:]], axis=1)
+    sum_medium = np.sum(cat_labels[:,categ_size_labels[1,:]], axis=1)
+    sum_large = np.sum(cat_labels[:,categ_size_labels[2,:]], axis=1)
+    sums = np.array([sum_small, sum_medium, sum_large]).T
+    
+    # to resolve conflicts, use the counts in each size group.
+    # if two groups have the same count, use both labels (treated as ambiguous)
+    less_than_max = sums<np.max(sums, axis=1, keepdims=True)
+    sums[less_than_max] = 0
+
+    has_small = sums[:,0]>0
+    has_medium = sums[:,1]>0
+    has_large = sums[:,2]>0
+
+    rwsize_df = pd.DataFrame({'has_small': has_small, 'has_medium': has_medium, 'has_large': has_large})
+    fn2save = os.path.join(default_paths.stim_labels_root, 'S%d_realworldsize.csv'%(subject))
+    print('Saving to %s'%fn2save)
+    rwsize_df.to_csv(fn2save, header=True)
+          
+        
+    # then pRF-specific labels
     models = initialize_fitting.get_prf_models(which_grid=which_prf_grid)    
     n_prfs = len(models)
     labels_folder = os.path.join(default_paths.stim_labels_root, 'S%d_within_prf_grid%d'%(subject, \
@@ -906,7 +820,174 @@ def concat_labels_each_prf(subject, which_prf_grid, verbose=False, debug=False):
             print('Saving to %s'%(save_name_groups))
             np.save(save_name_groups, {'discrim_type_list': discrim_type_list, \
                                       'col_names_all': col_names_all}, allow_pickle=True)
+
+
+def concat_labels_fullimage(subject, verbose=False):
+
+    cat_objects, cat_names, cat_ids, supcat_names, ids_each_supcat = \
+            coco_utils.get_coco_cat_info(coco_utils.coco_val)
+
+    stuff_cat_objects, stuff_cat_names, stuff_cat_ids, stuff_supcat_names, stuff_ids_each_supcat = \
+            coco_utils.get_coco_cat_info(coco_utils.coco_stuff_val)
+
+    labels_folder = os.path.join(default_paths.stim_labels_root)
+    
+    # this file will get made once every time this method is run, it is same for all subjects/pRFs.
+    save_name_groups = os.path.join(default_paths.stim_labels_root,'All_concat_labelgroupnames.npy')
+
+    top_two_fn = os.path.join(default_paths.stim_labels_root, \
+                           'Coco_supcat_top_two_prf_grid5.npy')
+    top_two = np.load(top_two_fn, allow_pickle=True).item()
+    
+    # list all the attributes we want to look at here
+    discrim_type_list = ['indoor_outdoor','natural_humanmade','animacy','real_world_size_binary',\
+                         'real_world_size_continuous']
+
+    discrim_type_list+=supcat_names # presence or absence of each superordinate category
+    # within each superordinate category, will label the basic-level sub-categories 
+    for scname in supcat_names:
+        if len(top_two['things_top_two'][scname])>0:           
+            discrim_type_list+=['within_%s'%scname]
+
+    # same idea for the coco-stuff labels
+    discrim_type_list+=stuff_supcat_names
+    for scname in stuff_supcat_names:
+        if len(top_two['stuff_top_two'][scname])>0:           
+            discrim_type_list+=['within_%s'%scname]
+
+    n_sem_axes = len(discrim_type_list)
+    n_trials = 10000
+   
+    # load the labels for indoor vs outdoor (which is defined across entire images, not within pRF)
+    in_out_labels_fn = os.path.join(default_paths.stim_labels_root, 'S%d_indoor_outdoor.csv'%subject)
+    nat_hum_labels_fn = os.path.join(labels_folder, 'S%d_natural_humanmade.csv'%(subject))
+    size_labels_fn = os.path.join(labels_folder,'S%d_realworldsize.csv'%(subject))
+    coco_things_labels_fn = os.path.join(labels_folder, 'S%d_cocolabs_binary.csv'%(subject))  
+    coco_stuff_labels_fn = os.path.join(labels_folder, 'S%d_cocolabs_stuff_binary.csv'%(subject))  
+
+    if verbose:
+        print('Loading pre-computed features from %s'%in_out_labels_fn)
+        print('Loading pre-computed features from %s'%nat_hum_labels_fn)
+        print('Loading pre-computed features from %s'%size_labels_fn)
+        print('Loading pre-computed features from %s'%coco_things_labels_fn)
+        print('Loading pre-computed features from %s'%coco_stuff_labels_fn)
+
+    in_out_df = pd.read_csv(in_out_labels_fn, index_col=0)
+    nat_hum_df = pd.read_csv(nat_hum_labels_fn, index_col=0)  
+    size_df = pd.read_csv(size_labels_fn, index_col=0)  
+    coco_things_df = pd.read_csv(coco_things_labels_fn, index_col=0)
+    coco_stuff_df = pd.read_csv(coco_stuff_labels_fn, index_col=0)
+
+    # will make a single dataframe for each pRF
+    labels_df = pd.DataFrame({})
+    save_name = os.path.join(labels_folder,'S%d_concat.csv'%(subject))
+
+    
+    col_names_all = []
+    for dd in range(n_sem_axes):
+
+        labels=None; colnames=None;
+
+        discrim_type = discrim_type_list[dd]
+        if 'indoor_outdoor' in discrim_type:
+            labels = np.array(in_out_df).astype(np.float32)
+            colnames = list(in_out_df.keys())
+
+        elif 'natural_humanmade' in discrim_type:
+            labels = np.array(nat_hum_df).astype(np.float32)
+            colnames = list(nat_hum_df.keys())
+
+        elif 'real_world_size' in discrim_type:
+            if 'binary' in discrim_type:
+                # use just small and big, ignoring medium.
+                labels = np.array(size_df)[:,[0,2]].astype(np.float32)
+                colnames = [size_df.keys()[0], size_df.keys()[2]]
+            elif 'continuous' in discrim_type:
+                # use all three levels, for a continuous variable.
+                labels = np.array(size_df).astype(np.float32)
+                colnames = list(size_df.keys())
+
+        elif 'animacy' in discrim_type:
+            supcat_labels = np.array(coco_things_df)[:,0:12]
+            animate_supcats = [1,9]
+            inanimate_supcats = [ii for ii in range(12)\
+                                 if ii not in animate_supcats]
+            has_animate = np.any(np.array([supcat_labels[:,ii]==1 \
+                                           for ii in animate_supcats]), axis=0)
+            has_inanimate = np.any(np.array([supcat_labels[:,ii]==1 \
+                                        for ii in inanimate_supcats]), axis=0)
+            labels = np.concatenate([has_animate[:,np.newaxis], \
+                                         has_inanimate[:,np.newaxis]], axis=1).astype(np.float32)
+            colnames = ['has_animate','has_inanimate']
+
+        elif discrim_type in supcat_names:
+            has_label = np.any(np.array(coco_things_df)[:,0:12]==1, axis=1)
+            label1 = np.array(coco_things_df[discrim_type])[:,np.newaxis]
+            label2 = (label1==0) & (has_label[:,np.newaxis])
+            labels = np.concatenate([label1, label2], axis=1).astype(np.float32)
+            colnames = ['has_%s'%discrim_type, 'has_other']
+
+        elif discrim_type in stuff_supcat_names:
+            has_label = np.any(np.array(coco_stuff_df)[:,0:16]==1, axis=1)
+            label1 = np.array(coco_stuff_df[discrim_type])[:,np.newaxis]
+            label2 = (label1==0) & (has_label[:,np.newaxis])
+            labels = np.concatenate([label1, label2], axis=1).astype(np.float32)
+            colnames = ['has_%s'%discrim_type, 'has_other']
+
+        elif 'within_' in discrim_type:
+
+            supcat_name = discrim_type.split('within_')[1]
+            # for a given super-category, label the individual sub-categories.
+            if supcat_name in supcat_names:
+                subcats_use = top_two['things_top_two'][supcat_name]
+                labels = np.array([np.array(coco_things_df[subcats_use[0]]), \
+                         np.array(coco_things_df[subcats_use[1]])]).astype(np.float32).T
+                colnames = subcats_use
+
+            elif supcat_name in stuff_supcat_names:
+                subcats_use = top_two['stuff_top_two'][supcat_name]
+                labels = np.array([np.array(coco_stuff_df[subcats_use[0]]), \
+                         np.array(coco_stuff_df[subcats_use[1]])]).astype(np.float32).T
+                colnames = subcats_use
+
+        col_names_all.append(colnames)
+
+        if verbose:
+            print(discrim_type)
+            print(colnames)          
+            if labels.shape[1]==2:
+                print('num 1/1, 1/0, 0/1, 0/0:')
+                print([np.sum((labels[:,0]==1) & (labels[:,1]==1)), \
+                np.sum((labels[:,0]==1) & (labels[:,1]==0)),\
+                np.sum((labels[:,0]==0) & (labels[:,1]==1)),\
+                np.sum((labels[:,0]==0) & (labels[:,1]==0))])
+            else:
+                print('num each column:')
+                print(np.sum(labels, axis=0).astype(int))
+
+        # remove any images with >1 or 0 labels, since these are ambiguous.
+        assert(len(colnames)==labels.shape[1])
+        has_one_label = np.sum(labels, axis=1)==1
+        labels = np.array([np.where(labels[ii,:]==1)[0][0] \
+                   if has_one_label[ii] else np.nan \
+                   for ii in range(labels.shape[0])])
+
+        if verbose:
+            print('n trials labeled/ambiguous: %d/%d'%\
+                  (np.sum(~np.isnan(labels)), np.sum(np.isnan(labels))))
+
+        labels_df[discrim_type] = labels
+
+
+    if verbose:
+        print('Saving to %s'%save_name)
+        print('Saving to %s'%(save_name_groups))
         
+    labels_df.to_csv(save_name, header=True)
+    np.save(save_name_groups, {'discrim_type_list': discrim_type_list, \
+                              'col_names_all': col_names_all}, allow_pickle=True)
+
+
 def count_highlevel_labels(which_prf_grid=5, axes_to_do=[0,2,3], \
                            debug=False):
 

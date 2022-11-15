@@ -120,11 +120,20 @@ def fit_fwrf(args):
         if np.any(['semantic' in ft for ft in fitting_types]):
             dict2save.update({
             'semantic_feature_set': args.semantic_feature_set,
+            'use_fullimage_sem_feats': args.use_fullimage_sem_feats,
+            })
+        if np.any(['color' in ft for ft in fitting_types]):
+            dict2save.update({
+            'use_fullimage_color_feats': args.use_fullimage_color_feats,
             })
         if np.any(['sketch_tokens' in ft for ft in fitting_types]):
             dict2save.update({         
             'use_pca_st_feats': args.use_pca_st_feats,
             'use_residual_st_feats': args.use_residual_st_feats,
+            'use_grayscale_st_feats': args.use_grayscale_st_feats,
+            'use_fullimage_st_feats': args.use_fullimage_st_feats,
+            'st_pooling_size': args.st_pooling_size,
+            'st_use_avgpool': args.st_use_avgpool,
             })          
         if np.any(['pyramid' in ft for ft in fitting_types]):
             dict2save.update({
@@ -138,18 +147,35 @@ def fit_fwrf(args):
             'n_sf_gabor': args.n_sf_gabor,
             'gabor_nonlin_fn': args.gabor_nonlin_fn,
             'use_pca_gabor_feats': args.use_pca_gabor_feats,
+            'use_fullimage_gabor_feats': args.use_fullimage_gabor_feats,
             })
         if np.any(['alexnet' in ft for ft in fitting_types]):
             dict2save.update({
             'alexnet_layer_name': args.alexnet_layer_name,
             'alexnet_padding_mode': args.alexnet_padding_mode,
             'use_pca_alexnet_feats': args.use_pca_alexnet_feats, 
+            'alexnet_blurface': args.alexnet_blurface,
+            'use_fullimage_alexnet_feats': args.use_fullimage_alexnet_feats,
             })
         if np.any(['clip' in ft for ft in fitting_types]):
             dict2save.update({
-            'clip_layer_name': args.clip_layer_name,
-            'clip_model_architecture': args.clip_model_architecture,
-            'use_pca_clip_feats': args.use_pca_clip_feats,   
+            'clip_layer_name': args.resnet_layer_name,
+            'clip_model_architecture': args.resnet_model_architecture,
+            'use_pca_clip_feats': args.use_pca_resnet_feats,  
+            'n_resnet_blocks_include': args.n_resnet_blocks_include,
+            'clip_layers_use': dnn_layers_use,
+            'use_fullimage_resnet_feats': args.use_fullimage_resnet_feats,
+            })
+        if np.any(['resnet' in ft for ft in fitting_types]):
+            dict2save.update({
+            'resnet_layer_name': args.resnet_layer_name,
+            'resnet_model_architecture': args.resnet_model_architecture,
+            'use_pca_resnet_feats': args.use_pca_resnet_feats,  
+            'n_resnet_blocks_include': args.n_resnet_blocks_include, 
+            'resnet_blurface': args.resnet_blurface, 
+            'resnet_layers_use': dnn_layers_use,
+            'resnet_training_type': args.resnet_training_type, 
+            'use_fullimage_resnet_feats': args.use_fullimage_resnet_feats,
             })
 
         print('\nSaving to %s\n'%fn2save)
@@ -192,16 +218,44 @@ def fit_fwrf(args):
     mean_each_sem_level_balanced = None
         
     if np.any(['alexnet' in ft for ft in fitting_types]):
-        dnn_model='alexnet'
+        if args.alexnet_blurface: 
+            dnn_model='alexnet_blurface'
+        else:
+            dnn_model='alexnet'
         n_dnn_layers = 5;
+        dnn_layers_use = np.arange(5)
         assert(not np.any(['clip' in ft for ft in fitting_types]))
-    elif np.any(['clip' in ft for ft in fitting_types]):
-        dnn_model='clip'
-        n_dnn_layers = 16;
+    elif np.any(['clip' in ft for ft in fitting_types]) or np.any(['resnet' in ft for ft in fitting_types]):
+        from feature_extraction import extract_resnet_features
+        if args.resnet_layer_name=='best_layer' or args.resnet_layer_name=='all_resblocks':
+            if args.n_resnet_blocks_include==4:
+                n_dnn_layers = 4;
+                dnn_layers_use = [2,6,12,15]
+            elif args.n_resnet_blocks_include==8:
+                n_dnn_layers = 8;
+                dnn_layers_use=np.arange(0,16,2)+1
+            elif args.n_resnet_blocks_include==16:
+                n_dnn_layers = 16;
+                dnn_layers_use = np.arange(0,16,1)
+            else:
+                raise ValueError('n_resnet_blocks_include must be 4,8, or 16')
+        else:
+            dnn_layers_use=args.resnet_layer_name
+        if np.any(['clip' in ft for ft in fitting_types]):
+            dnn_model='clip'
+        elif np.any(['resnet' in ft for ft in fitting_types]):
+            if args.resnet_blurface:
+                dnn_model='resnet_blurface'
+            else:
+                dnn_model='resnet'
         assert(not np.any(['alexnet' in ft for ft in fitting_types]))
+        print('\nusing dnn layers:')
+        print(dnn_layers_use)       
+        print('args.n_resnet_blocks_include=%d'%args.n_resnet_blocks_include)
+        print('\n')
     else:
         dnn_model = None
-          
+        dnn_layers_use=None
     
     ########## LOADING THE DATA #############################################################################
     # decide what voxels to use  
@@ -284,11 +338,14 @@ def fit_fwrf(args):
         val_trials_use = None
    
         
-    if args.use_precomputed_prfs:
+    if args.use_precomputed_prfs and args.which_prf_grid!=0:
         # If we already computed pRFs for this subject on some model, can load those now and use them during 
         # fitting. Faster than fitting pRFs each time.
         best_model_each_voxel, saved_prfs_fn = initialize_fitting.load_precomputed_prfs(args.subject, args)
         assert(len(best_model_each_voxel)==n_voxels)
+    elif args.which_prf_grid==0:
+        best_model_each_voxel = np.zeros((n_voxels,),dtype=int)
+        saved_prfs_fn = None
     else:
         # otherwise fitting all params from scratch.
         best_model_each_voxel = None
@@ -299,11 +356,12 @@ def fit_fwrf(args):
     # only used for clip/alexnet when layer_name is "best_layer", since diff voxels get fit w different features
     # otherwise this loop only goes once and voxel_subset_mask is all ones.
     
-    if dnn_model is not None and (args.alexnet_layer_name=='best_layer' or args.clip_layer_name=='best_layer'):
+    if dnn_model is not None and (args.alexnet_layer_name=='best_layer' or args.resnet_layer_name=='best_layer'):
         # special case, going to fit groups of voxels separately according to which dnn layer was best
         # creating a list of voxel masks here that will define the subsets to loop over.
         best_layer_each_voxel, saved_best_layer_fn = \
-                  initialize_fitting.load_best_model_layers(args.subject, dnn_model)
+                  initialize_fitting.load_best_model_layers(args.subject, dnn_model, dnn_layers_use)
+        assert(np.all(np.unique(best_layer_each_voxel)==np.arange(n_dnn_layers)))
         voxel_subset_masks = [best_layer_each_voxel==ll for ll in range(n_dnn_layers)]
         assert(len(best_layer_each_voxel)==n_voxels)
         assert(not args.save_model_residuals)
@@ -311,7 +369,9 @@ def fit_fwrf(args):
         
         # Create feature loaders here
         feat_loader_full_list = [initialize_fitting.make_feature_loaders(args, fitting_types, vi=ll) \
-                            for ll in range(n_dnn_layers)]
+                            for ll in dnn_layers_use]
+        assert(len(feat_loader_full_list)==n_dnn_layers)
+        
     elif args.shuffle_data or args.bootstrap_data:
         best_layer_each_voxel = None;
         saved_best_layer_fn = None;
@@ -321,7 +381,7 @@ def fit_fwrf(args):
         n_batches = int(np.ceil(n_voxels/bs))
         voxel_subset_masks = [(np.arange(n_voxels)>=(nn*bs)) & (np.arange(n_voxels)<((nn+1)*bs)) \
                         for nn in range(n_batches)]
-        feat_loader_full_list = [initialize_fitting.make_feature_loaders(args, fitting_types, vi=0) \
+        feat_loader_full_list = [initialize_fitting.make_feature_loaders(args, fitting_types, vi=0, dnn_layers_use=dnn_layers_use) \
                         for nn in range(n_batches)]
         
     else:
@@ -331,7 +391,7 @@ def fit_fwrf(args):
         saved_best_layer_fn = None;
         
         # Create feature loaders here
-        feat_loader_full_list = [initialize_fitting.make_feature_loaders(args, fitting_types, vi=0)]
+        feat_loader_full_list = [initialize_fitting.make_feature_loaders(args, fitting_types, vi=0, dnn_layers_use=dnn_layers_use)]
         
     max_features_overall = np.max([fl.max_features for fl in feat_loader_full_list])      
     
@@ -346,6 +406,7 @@ def fit_fwrf(args):
         partial_masks[vi] = partial_masks_tmp
         assert(len(partial_version_names)==n_partial_versions)
         
+    sys.stdout.flush()
                                  
     ###### LOAD LAST SAVED MODEL ############################################################################
     if not args.from_scratch:
@@ -359,12 +420,14 @@ def fit_fwrf(args):
         assert(last_saved['debug']==args.debug)
         assert(last_saved['which_prf_grid']==args.which_prf_grid)
         assert(np.all(last_saved['lambdas']==lambdas))
-        print(last_saved['saved_best_layer_fn'])
-        print(saved_best_layer_fn)
-        print(last_saved['saved_best_layer_fn'].split('/')[7])
-        print(saved_best_layer_fn.split('/')[7])
-        assert(last_saved['saved_prfs_fn'].split('/')[7]==saved_prfs_fn.split('/')[7])
-        assert(last_saved['saved_best_layer_fn'].split('/')[7]==saved_best_layer_fn.split('/')[7])
+        if 'saved_prfs_fn' in list(last_saved.keys()) and (last_saved['saved_prfs_fn'] is not None):
+            assert(last_saved['saved_prfs_fn'].split('/')[7]==saved_prfs_fn.split('/')[7])
+        else:
+            assert(saved_prfs_fn is None)
+        if 'saved_best_layer_fn' in list(last_saved.keys()) and (last_saved['saved_best_layer_fn'] is not None):
+            assert(last_saved['saved_best_layer_fn'].split('/')[7]==saved_best_layer_fn.split('/')[7])
+        else:
+            assert(saved_best_layer_fn is None)
         assert('shuffle_data' not in last_saved.keys() or last_saved['shuffle_data']==False)
         
         voxel_subset_is_done_trn = last_saved['voxel_subset_is_done_trn']
@@ -462,7 +525,8 @@ def fit_fwrf(args):
         feat_loader_full = feat_loader_full_list[vi]
         max_features = feat_loader_full.max_features 
         
-        
+        sys.stdout.flush()
+            
         ########## INITIALIZE ENCODING MODEL ##################################################
         
         model = fwrf_model.encoding_model(feat_loader_full, lambdas=lambdas, \
@@ -493,6 +557,7 @@ def fit_fwrf(args):
             print('\nStarting training (voxel subset %d of %d)...\n'%(vi, len(voxel_subset_masks)))
             print(len(image_inds_trn))
 
+            sys.stdout.flush()
             
             model.fit(image_inds_trn, voxel_data_trn_use, \
                         image_inds_holdout, voxel_data_holdout_use,\

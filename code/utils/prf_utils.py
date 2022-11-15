@@ -2,6 +2,7 @@ import struct
 import numpy as np
 import math
 import copy
+import scipy.stats
 
 def make_log_polar_grid(sigma_range=[0.02, 1], n_sigma_steps=10, \
                           eccen_range=[0, 7/8.4], n_eccen_steps=10, n_angle_steps=16):
@@ -295,21 +296,23 @@ def gauss_2d(center, sd, patch_size, orient_deg=0, aperture=1.0, dtype=np.float3
     
     return gauss
 
-def get_prf_mask(center, sd, patch_size):
+def get_prf_mask(center, sd, patch_size, zscore_plusminus=2):
     
     """
-    Get boolean mask for each pRF (region +/- 2 sds from center)
-    To be used for getting overlap with coco semantic segmentations.
+    Get boolean mask for each pRF (region +/- n sds from center)
+    zscore_plusminus determines how many stdevs out.
     """
+    
+    # cutoff of 0.14 approximates +/-2 SDs
+    cutoff_height = np.round(zscore_to_pdfheight(zscore_plusminus), 2)
     
     if np.all(np.abs(center)<0.50):
         
         # if the center of the pRF is within the image region, 
         # then can get max value without padding.
         prf = gauss_2d(center, sd, patch_size, aperture=1.0)
-        # Creating a mask 2 SD from the center
-        # cutoff of 0.14 approximates +/-2 SDs
-        prf_mask = prf/np.max(prf)>0.14
+       
+        prf_mask = prf/np.max(prf)>cutoff_height
         
     else:
         
@@ -321,15 +324,29 @@ def get_prf_mask(center, sd, patch_size):
         padded_size = patch_size+spaces_pad*2
         prf_padded = gauss_2d(center, sd, patch_size=padded_size, \
                                  aperture=padded_aperture)
-        # Creating a mask 2 SD from the center
-        # cutoff of 0.14 approximates +/-2 SDs
-        prf_mask_padded = prf_padded/np.max(prf_padded)>0.14
+        
+        prf_mask_padded = prf_padded/np.max(prf_padded)>cutoff_height
+        
         # now un-pad it back to original size.
         prf_mask = prf_mask_padded[spaces_pad:spaces_pad+patch_size, \
                                    spaces_pad:spaces_pad+patch_size]
         
     return prf_mask
 
+def zscore_to_pdfheight(z_target, normalized=True):
+    
+    assert(np.abs(z_target)<5)
+    
+    x = np.linspace(-5,5,1000)
+
+    y = scipy.stats.norm.pdf(x)
+    if normalized:
+        y /= np.max(y)
+
+    nearest_x_ind = np.argmin(np.abs(x-z_target))
+    h_target = y[nearest_x_ind]
+    
+    return h_target
 
 def pol_to_cart(angle_deg, eccen_deg):
     """

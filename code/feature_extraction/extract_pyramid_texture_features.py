@@ -8,38 +8,20 @@ import torch.nn
 
 #import custom modules
 from utils import torch_utils,  default_paths
-from utils import nsd_utils, coco_utils
+from utils import nsd_utils, coco_utils, floc_utils
 from model_fitting import initialize_fitting
 from feature_extraction import texture_statistics_pyramid
 
-device = initialize_fitting.init_cuda()
+if torch.cuda.is_available():
+    device = initialize_fitting.init_cuda()
+else:
+    device = 'cpu:0'
 
-def extract_features(subject, n_ori=4, n_sf=4, batch_size=100, use_node_storage=False, \
+def extract_features(image_data, \
+                     n_ori=4, n_sf=4, \
+                     batch_size=100,
                      which_prf_grid=1, debug=False):
-    
-    if use_node_storage:
-        pyramid_texture_feat_path = default_paths.pyramid_texture_feat_path_localnode
-    else:
-        pyramid_texture_feat_path = default_paths.pyramid_texture_feat_path
-          
-    if debug:
-        fn2save = os.path.join(pyramid_texture_feat_path, \
-                       'S%d_features_each_prf_%dori_%dsf_grid%d_DEBUG.h5py'%(subject, n_ori, n_sf, which_prf_grid))
-    else:
-        fn2save = os.path.join(pyramid_texture_feat_path, \
-                       'S%d_features_each_prf_%dori_%dsf_grid%d.h5py'%(subject, n_ori, n_sf, which_prf_grid))
-            
-    # Load and prepare the image set to work with (all images for the current subject, 10,000 ims)
-    if subject==999:
-        # 999 is a code i am using to indicate the independent set of coco images, which were
-        # not actually shown to any NSD participants
-        image_data = coco_utils.load_indep_coco_images(n_pix=240)
-        image_data = nsd_utils.image_uncolorize_fn(image_data)
-    else: 
-        # load all images for the current subject, 10,000 ims
-        image_data = nsd_utils.get_image_data(subject)  
-        image_data = nsd_utils.image_uncolorize_fn(image_data)
-    
+ 
     # Params for the spatial aspect of the model (possible pRFs)
     models = initialize_fitting.get_prf_models(which_grid=which_prf_grid)    
 
@@ -90,25 +72,95 @@ def extract_features(subject, n_ori=4, n_sf=4, batch_size=100, use_node_storage=
 
             sys.stdout.flush()
 
+    return features_each_prf
     
-    print('Writing prf features to %s\n'%fn2save)
+
+def proc_one_subject(subject, args):
+    
+    if args.use_node_storage:
+        pyramid_texture_feat_path = default_paths.pyramid_texture_feat_path_localnode
+    else:
+        pyramid_texture_feat_path = default_paths.pyramid_texture_feat_path
+    if args.debug:
+        pyramid_texture_feat_path = os.path.join(pyramid_texture_feat_path, 'DEBUG')
+    if not os.path.exists(pyramid_texture_feat_path):
+        os.makedirs(pyramid_texture_feat_path)
+         
+    filename_save = os.path.join(pyramid_texture_feat_path, \
+                       'S%d_features_each_prf_%dori_%dsf_grid%d.h5py'%\
+                         (subject, args.n_ori, args.n_sf, args.which_prf_grid))
+            
+    # Load and prepare the image set to work with (all images for the current subject, 10,000 ims)
+    if subject==999:
+        # 999 is a code i am using to indicate the independent set of coco images, which were
+        # not actually shown to any NSD participants
+        image_data = coco_utils.load_indep_coco_images(n_pix=240)
+        image_data = nsd_utils.image_uncolorize_fn(image_data)
+    else: 
+        # load all images for the current subject, 10,000 ims
+        image_data = nsd_utils.get_image_data(subject)  
+        image_data = nsd_utils.image_uncolorize_fn(image_data)
+      
+    features_each_prf = extract_features(image_data, \
+                                         n_ori=args.n_ori, n_sf=args.n_sf, \
+                                         batch_size=args.batch_size,
+                                         which_prf_grid=args.which_prf_grid, \
+                                         debug=args.debug)
+
+    save_features(features_each_prf, filename_save)
+    
+
+def proc_other_image_set(image_set, args):
+    
+    if args.use_node_storage:
+        pyramid_texture_feat_path = default_paths.pyramid_texture_feat_path_localnode
+    else:
+        pyramid_texture_feat_path = default_paths.pyramid_texture_feat_path
+    if args.debug:
+        pyramid_texture_feat_path = os.path.join(pyramid_texture_feat_path, 'DEBUG')
+    if not os.path.exists(pyramid_texture_feat_path):
+        os.makedirs(pyramid_texture_feat_path)
+       
+    filename_save = os.path.join(pyramid_texture_feat_path, \
+                       '%s_features_each_prf_%dori_%dsf_grid%d.h5py'%\
+                         (image_set, args.n_ori, args.n_sf, args.which_prf_grid))
+            
+    if image_set=='floc':
+        image_data = floc_utils.load_floc_images(npix=240)
+    else:
+        raise ValueError('image set %s not recognized'%image_set)
+       
+    features_each_prf = extract_features(image_data, \
+                                         n_ori=args.n_ori, n_sf=args.n_sf, \
+                                         batch_size=args.batch_size,
+                                         which_prf_grid=args.which_prf_grid, \
+                                         debug=args.debug)
+
+    save_features(features_each_prf, filename_save)
+    
+    
+def save_features(features_each_prf, filename_save):
+    
+    print('Writing prf features to %s\n'%filename_save)
     
     t = time.time()
-    with h5py.File(fn2save, 'w') as data_set:
+    with h5py.File(filename_save, 'w') as data_set:
         dset = data_set.create_dataset("features", np.shape(features_each_prf), dtype=np.float32)
         data_set['/features'][:,:,:] = features_each_prf
         data_set.close()  
     elapsed = time.time() - t
     
     print('Took %.5f sec to write file'%elapsed)
-    
+   
     
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser()
     
-    parser.add_argument("--subject", type=int,default=1,
+    parser.add_argument("--subject", type=int,default=0,
                     help="number of the subject, 1-8")
+    parser.add_argument("--image_set", type=str,default='none',
+                    help="name of the image set to use (if not an NSD subject)")
     parser.add_argument("--n_ori", type=int,default=4,
                     help="how many orientation channels?")
     parser.add_argument("--n_sf", type=int,default=4,
@@ -125,4 +177,19 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     
-    extract_features(subject = args.subject, n_ori = args.n_ori, n_sf = args.n_sf, batch_size = args.batch_size, use_node_storage = args.use_node_storage, debug = args.debug==1, which_prf_grid = args.which_prf_grid)
+    if args.subject==0:
+        args.subject=None
+    if args.image_set=='none':
+        args.image_set=None
+                         
+    args.debug = (args.debug==1)     
+    
+    if args.subject is not None:
+        
+        proc_one_subject(subject = args.subject, args=args)
+        
+    elif args.image_set is not None:
+        
+        proc_other_image_set(image_set=args.image_set, args=args)
+        
+    

@@ -454,15 +454,67 @@ def fdr(pvals, alpha=None, parametric=True):
     
     return p_fdr, p_masked
 
-
-def holmes_bonferonni(vector, q):
+def holm_bonferroni(pvals, q):
+    
+    orig_shape = pvals.shape
+    vector = pvals.ravel()
+    
     n = len(vector)
     ps = np.sort(vector)
     qs = np.array([q/i for i in range (1,n+1)])[::-1]
     thrs = np.where(ps<=qs)[0]
     args = np.argsort(vector)
+   
     if len(thrs)>0:
         thrs = vector[args[thrs[-1]]]
     else:
         thrs = 0
-    return vector<=thrs, thrs
+    masked = vector<=thrs
+    
+    masked = np.reshape(masked, orig_shape)
+    
+    return masked, thrs
+
+
+
+    
+def decode_lda(X, y, n_crossval_folds=10, debug=False):
+    
+    n_trials = X.shape[0]
+    assert(len(y)==n_trials)
+    un_values = np.unique(y)
+    if not debug:
+        assert(len(un_values)>1)
+    
+    n_per_fold = int(np.ceil(n_trials/n_crossval_folds))
+    
+    cv_labels = np.tile(np.arange(n_crossval_folds), n_per_fold)[0:n_trials]
+    shuff_order = np.random.permutation(np.arange(n_trials))
+    cv_labels = cv_labels[shuff_order]
+
+    ypred = np.zeros_like(y)
+    
+    for cv in range(n_crossval_folds):
+        
+        trninds = cv_labels!=cv
+        tstinds = cv_labels==cv
+        
+        X_trn = X[trninds,:]
+        y_trn = y[trninds]
+        X_tst = X[tstinds,:]
+        y_tst = y[tstinds]
+    
+        # make sure all labels are represented for this cross-val fold.
+        assert(np.all(np.unique(y_trn)==un_values))
+
+        clf = LinearDiscriminantAnalysis(solver='svd')
+        clf.fit(X_trn, y_trn)
+
+        ypred_tst = clf.predict(X_tst)
+
+        ypred[tstinds] = ypred_tst
+        
+    tst_acc = np.mean(ypred==y)
+    tst_dprime = get_dprime(ypred, y, un_values)
+    
+    return tst_acc, tst_dprime

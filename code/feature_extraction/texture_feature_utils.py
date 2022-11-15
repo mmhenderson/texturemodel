@@ -74,12 +74,12 @@ def is_low_level():
     
     return is_ll
 
-def get_feature_inds_pca(subject, pca_type='pcaHL', \
+def get_feature_inds_pca(image_set, pca_type='pcaHL', \
                          which_prf_grid=5):
 
     filename = os.path.join(default_paths.pyramid_texture_feat_path,'PCA', \
-                            'S%d_4ori_4sf_featurelabels_%s_grid%d.npy'\
-                               %(subject, pca_type, which_prf_grid))
+                            '%s_4ori_4sf_featurelabels_%s_grid%d.npy'\
+                               %(image_set, pca_type, which_prf_grid))
     lab = np.load(filename, allow_pickle=True).item()
     cols = lab['feature_column_labels'].astype(int)
     names = lab['feature_type_names']

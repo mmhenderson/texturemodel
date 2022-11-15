@@ -161,7 +161,7 @@ def get_texture_pc_activations(subjects=[1,2], sessions=[0]):
     # project to pca space, proj is images x PCs
     proj = voxel_data_overlappingsubs @ wts_allsubs
     
-    filename_save = os.path.join(default_paths.root, 'texturemodel', 'pca_projected_activs.npy')
+    filename_save = os.path.join(default_paths.root, 'texturemodel', 'pca_uniquevar', 'pca_projected_activs.npy')
     
     np.save(filename_save, {'proj': proj, 
                            'image_inds': image_inds_overlappingsubs})

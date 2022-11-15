@@ -57,6 +57,8 @@ def plot_with_overlays(volumes, title, port, overlay_type='overlays', labels_on=
     """
     Make sure to set recache=True if you are changing from one set of overlays to another 
     (or from no overlays to overlays)
+    If plotting data from multiple subjects together, set recache=False
+    Otherwise it will plot the first subject's overlays on all subject, which is wrong
     """
     overlay_names=('rois','sulci')
 

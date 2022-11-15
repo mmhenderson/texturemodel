@@ -1,4 +1,5 @@
 import numpy as np
+import sys
 
 """
 Feature loader class that can merge other smaller modules (useful for variance partitioning)
@@ -6,7 +7,7 @@ Feature loader class that can merge other smaller modules (useful for variance p
 
 class combined_feature_loader:
     
-    def __init__(self, modules, module_names, do_varpart=False, include_solo_models=True):
+    def __init__(self, modules, module_names, do_varpart=False, include_solo_models=True, lambda_groups=None):
         
         super(combined_feature_loader, self).__init__()
         self.modules = modules
@@ -14,7 +15,22 @@ class combined_feature_loader:
         self.do_varpart = do_varpart
         self.include_solo_models = include_solo_models
         self.max_features = np.sum(np.array([module.max_features for module in self.modules]))
-        self.n_prfs = self.modules[0].n_prfs
+        
+        self.n_prfs_each_mod = [module.n_prfs for module in self.modules]
+        print('n_prfs_each_mod:')
+        print(self.n_prfs_each_mod)
+        if np.any(np.array(self.n_prfs_each_mod)!=self.n_prfs_each_mod[0]):
+            # this is for when we're mixing modules that include pRFs with those that model full-image features
+            assert(len(np.unique(self.n_prfs_each_mod))==2)
+            self.n_prfs = np.max(self.n_prfs_each_mod)
+            assert(np.min(self.n_prfs_each_mod)==1)
+            self.mixing_n_prfs = True
+            
+        else:
+            self.n_prfs = self.modules[0].n_prfs
+            self.mixing_n_prfs = False
+        print(self.n_prfs, self.mixing_n_prfs)
+        self.lambda_groups = lambda_groups
         
     def clear_big_features(self):
         
@@ -73,16 +89,30 @@ class combined_feature_loader:
         
     def get_feature_group_inds(self):
         
+        if self.lambda_groups is not None:
+            assert(len(self.lambda_groups)==len(self.modules))
+        print('lambda groups:')
+        print(self.lambda_groups)
+        sys.stdout.flush()
+        print('in get_feature_group_inds')
+        sys.stdout.flush()
+        
         for mi, module in enumerate(self.modules):
             
             gi = module.get_feature_group_inds()
-        
+            gi = np.ones(np.shape(gi))
+            if self.lambda_groups is None:
+                gi *= mi
+            else:
+                gi *= self.lambda_groups[mi]
+                
             if mi==0:
                 group_inds = gi
             else:
-                group_inds = np.concatenate([group_inds, gi+max_prev+1], axis=0)
-            
-            max_prev = np.max(group_inds)
+                group_inds = np.concatenate([group_inds, gi], axis=0)
+        
+        print('done with get_feature_group_inds')
+        sys.stdout.flush()
         
         return group_inds
     
@@ -91,7 +121,12 @@ class combined_feature_loader:
 
         for mi, module in enumerate(self.modules):
             
-            features, inds = module.load(images, prf_model_index)
+            if self.n_prfs_each_mod[mi]==1:
+                # if this module is a full-image feature set, then always use prf index 0
+                features, inds = module.load(images, 0)
+            else:
+                features, inds = module.load(images, prf_model_index)
+            
             
             if mi==0:
                 all_features_concat = features

@@ -448,6 +448,7 @@ def plot_multi_bars(
     legend_separate=True,
     add_brackets=None,
     bracket_text=None,
+    err_capsize=None,
     fig_size=(12, 6),
 ):
 
@@ -518,6 +519,7 @@ def plot_multi_bars(
                 err_data[:, ll],
                 ecolor="k",
                 zorder=20,
+                capsize=err_capsize,
                 ls="none",
             )
         if point_data is not None:

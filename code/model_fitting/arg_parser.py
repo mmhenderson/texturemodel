@@ -30,6 +30,9 @@ def get_args():
     parser.add_argument("--trial_subset", type=str,default='all', 
                     help="fit for a subset of trials only? default all trials")
    
+    parser.add_argument("--image_set", type=str,default='none', 
+                    help="if evaluating on an independent image set, what is it called?")
+   
     parser.add_argument("--which_prf_grid", type=int,default=5,
                     help="which grid of candidate prfs?")
     parser.add_argument("--prf_fixed_sigma", type=float, default=None, 
@@ -126,7 +129,18 @@ def get_args():
                     help="want to add nonlinearity to gabor features? 1 for yes, 0 for no")
     parser.add_argument("--use_pca_gabor_feats", type=nice_str2bool,default=False,
                     help="Want to use reduced dim (PCA) version of gabor features?")
-     
+    parser.add_argument("--use_fullimage_gabor_feats", type=nice_str2bool,default=False,
+                    help="Want to use full-image (no pRFs) vers of gabor features?")
+    
+    # Specific to color models
+    parser.add_argument("--use_fullimage_color_feats", type=nice_str2bool,default=False,
+                    help="Want to use full-image (no pRFs) vers of color features?")
+      
+    # Specific to gist models
+    parser.add_argument("--n_ori_gist", type=int,default=4,
+                    help="number of orientation channels to use")
+    parser.add_argument("--n_blocks_gist", type=int,default=4,
+                    help="number of spatial grid blocks for gist model")
     
     # Stuff that is specific to pyramid model
     parser.add_argument("--n_ori_pyr", type=int,default=4,
@@ -145,7 +159,15 @@ def get_args():
                     help="Want to use reduced dim (PCA) version of sketch tokens features?")
     parser.add_argument("--use_residual_st_feats", type=nice_str2bool,default=False,
                     help="Want to use sketch tokens features with gabor features regressed out?")
-                     
+    parser.add_argument("--use_grayscale_st_feats", type=nice_str2bool,default=False,
+                    help="Want to use sketch tokens features from grayscale images?")
+    parser.add_argument("--use_fullimage_st_feats", type=nice_str2bool,default=False,
+                    help="Want to use full-image (no pRFs) vers of sketchtokens features?")
+    parser.add_argument("--st_pooling_size", type=int,default=4,
+                    help="pooling kernel size used to compute full-image sketch tokens features")
+    parser.add_argument("--st_use_avgpool", type=nice_str2bool,default=False,
+                    help="For full-image sketchtokens features, use average pooling? (false=maxpool)")
+    
     # specific to alexnet
     parser.add_argument("--alexnet_layer_name", type=str, default='', 
                        help="What layer of alexnet to use?")
@@ -153,18 +175,33 @@ def get_args():
                        help="What padding mode for alexnet conv layers? default zeros.")
     parser.add_argument("--use_pca_alexnet_feats", type=nice_str2bool,default=True, 
                        help="use reduced-dim version of alexnet features?")
-
-    # specific to CLIP
-    parser.add_argument("--clip_layer_name", type=str, default='', 
-                       help="What layer of clip to use?")
-    parser.add_argument("--clip_model_architecture", type=str, default='RN50', 
-                       help="What model architecture used for this version of clip?")
-    parser.add_argument("--use_pca_clip_feats", type=nice_str2bool, default=True, 
-                       help="use reduced-dim version of clip features?")
+    parser.add_argument("--alexnet_blurface", type=nice_str2bool,default=False, 
+                       help="use version of alexnet features trained with blurry faces?")
+    parser.add_argument("--use_fullimage_alexnet_feats", type=nice_str2bool,default=False,
+                    help="Want to use full-image (no pRFs) vers of alexnet features?")
+    
+    # specific to CLIP/Resnet
+    parser.add_argument("--resnet_layer_name", type=str, default='', 
+                       help="What layer of resnet to use?")
+    parser.add_argument("--resnet_model_architecture", type=str, default='RN50', 
+                       help="What model architecture used for this version of resnet?")
+    parser.add_argument("--resnet_training_type", type=str, default='', 
+                       help="What training type used for resnet?")
+    parser.add_argument("--use_pca_resnet_feats", type=nice_str2bool, default=True, 
+                       help="use reduced-dim version of resnet features?")
+    parser.add_argument("--use_fullimage_resnet_feats", type=nice_str2bool,default=False,
+                    help="Want to use full-image (no pRFs) vers of resnet features?")
+    
+    parser.add_argument("--n_resnet_blocks_include", type=int,default=16,
+                    help="when choosing best resnet layer, how many blocks to choose from? fewer will run faster")
+    parser.add_argument("--resnet_blurface", type=nice_str2bool,default=False, 
+                       help="use version of alexnet features trained with blurry faces?")
 
     # Specific to semantic models
     parser.add_argument("--semantic_feature_set", type=str,default='',
                     help="if semantic model, what dimension?")
+    parser.add_argument("--use_fullimage_sem_feats", type=nice_str2bool,default=False,
+                    help="Want to use full-image (no pRFs) vers of semantic features?")
     
     args = parser.parse_args()
     
@@ -172,6 +209,8 @@ def get_args():
         args.prf_fixed_sigma=None
     if args.pyr_pca_type=='None':
         args.pyr_pca_type = None
+    if args.image_set=='none':
+        args.image_set = None
         
     if args.shuffle_data:
         if args.shuff_rnd_seed==0:
