@@ -8,7 +8,7 @@ import torch.nn
 
 #import custom modules
 from utils import torch_utils,  default_paths
-from utils import nsd_utils, coco_utils, floc_utils
+from utils import nsd_utils, floc_utils
 from model_fitting import initialize_fitting
 from feature_extraction import texture_statistics_pyramid
 
@@ -94,6 +94,7 @@ def proc_one_subject(subject, args):
     if subject==999:
         # 999 is a code i am using to indicate the independent set of coco images, which were
         # not actually shown to any NSD participants
+        from utils import coco_utils
         image_data = coco_utils.load_indep_coco_images(n_pix=240)
         image_data = nsd_utils.image_uncolorize_fn(image_data)
     else: 
