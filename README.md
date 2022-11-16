@@ -28,17 +28,11 @@ See our preprint at: https://www.biorxiv.org/content/10.1101/2022.09.23.509292v1
 </ol>
 
 ### Feature extraction:
-The first step of the fitting procedure is to extract texture statistics features using a steerable pyramid representation. Running this code requires PyTorch as well as PyrTools (https://pyrtools.readthedocs.io/en/latest/). Using a GPU is recommended for speed. 
+The first step of the fitting procedure is to extract texture statistics features using a steerable pyramid representation. Our Python feature extraction code is directly adapted from the matlab code available at: https://github.com/freeman-lab/metamers. Running our code requires PyTorch as well as PyrTools (https://pyrtools.readthedocs.io/en/latest/). Using a GPU is recommended for speed. 
 
 See "code/run/extract_texture_feats.sh" for an example of how to run the feature extraction code (adjust the paths in this script for your local filesystem).
 
 If you don't want to extract the features from scratch, you can download our pre-computed features at: https://osf.io/8fsnx/
-
-Our feature extraction code is directly adapted from the matlab code available at: https://github.com/freeman-lab/metamers. 
-We provide some functions to do a direct comparison of our method with the Freeman method, in /code/compare/. 
-Running this comparison will require the following repositories:
-  - https://github.com/freeman-lab/metamers
-  - https://github.com/LabForComputationalVision/matlabPyrTools
 
 ### Model fitting:
 See the scripts in "code/run/fit..." for examples of how to run fitting code (adjust the paths in these scripts for your local filesystem).
