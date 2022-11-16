@@ -17,19 +17,30 @@ See our preprint at: https://www.biorxiv.org/content/10.1101/2022.09.23.509292v1
   <ul>
     <li> http://naturalscenesdataset.org/
     <li> Update path_defs.py to reflect the path where NSD is downloaded.
+    <li> Use "/code/run/prep_images.sh" to prepare the NSD images for feature extraction pipeline.
   </ul>
+  <li>Use the jupyter notebooks inside "notebooks" to plot the results of model fitting, and reproduce all our figures.
+  <ul>
+    <li> Some of the plots require PyCortex, which you can download here:
+    <li> https://pypi.org/project/pycortex/
+  </ul>
+  
 </ol>
 
 ### Feature extraction:
-The first step of the model is to extract texture statistics features using a steerable pyramid representation (as in Portilla and Simoncelli 2001). 
-Code is included to perform feature extraction from natural images. This code requires PyTorch as well as PyrTools (https://pyrtools.readthedocs.io/en/latest/).
+The first step of the fitting procedure is to extract texture statistics features using a steerable pyramid representation. Our code is directly adapted from the Matlab code available at: https://github.com/freeman-lab/metamers. 
 
-Our feature extraction code is directly adapted from the matlab code available at: https://github.com/freeman-lab/metamers. 
-We provide some functions to do a direct comparison of our method with the Freeman method, in /code/compare/. 
-Running this comparison will require the following repositories:
-  - https://github.com/freeman-lab/metamers
-  - https://github.com/LabForComputationalVision/matlabPyrTools
+Running the feature extraction code requires PyTorch as well as PyrTools (https://pyrtools.readthedocs.io/en/latest/). Using a GPU is recommended for speed. 
+
+See "code/run/extract_texture_feats.sh" for an example of how to run the feature extraction code (adjust the paths in this script for your local filesystem).
+
+If you don't want to extract the features from scratch, you can download our pre-computed features at: https://osf.io/8fsnx/
 
 ### Model fitting:
+See the scripts in "code/run/fit..." for examples of how to run fitting code (adjust the paths in these scripts for your local filesystem).
+
+To fit the models, you'll need to first download the NSD dataset, and run the feature extraction code (or download the features from OSF).
+
+### Other notes:
 
 Any questions/concerns can be directed to mmhender@cmu.edu
