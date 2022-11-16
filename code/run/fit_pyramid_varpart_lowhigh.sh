@@ -12,22 +12,28 @@
 #This script is for performing the 2-way variance partitioning
 #(low vs high)
 
-
 echo $SLURM_JOBID
 echo $SLURM_NODELIST
 
 source ~/myenv/bin/activate
 
-cd /user_data/mmhender/texturemodel/code/model_fitting
+# change this path
+ROOT=/user_data/mmhender/
+
+# put the code directory on your python path
+PYTHONPATH=:${ROOT}texturemodel/code/${PYTHONPATH}
+
+# go to folder where script is located
+cd ${ROOT}texturemodel/code/model_fitting
 
 # subjects=(5)
-subjects=(1 2 3 4 5 6 7 8)
-# subjects=(1)
+# subjects=(1 2 3 4 5 6 7 8)
+subjects=(1)
 # 
-debug=0
-up_to_sess=40
-# debug=1
-# up_to_sess=1
+# debug=0
+# up_to_sess=40
+debug=1
+up_to_sess=1
 
 shuffle_images_once=0
 

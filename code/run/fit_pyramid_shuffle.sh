@@ -11,13 +11,19 @@
 
 # Perform the permutation testing on texture statistics model
 
-
 echo $SLURM_JOBID
 echo $SLURM_NODELIST
 
 source ~/myenv/bin/activate
 
-cd /user_data/mmhender/texturemodel/code/model_fitting
+# change this path
+ROOT=/user_data/mmhender/
+
+# put the code directory on your python path
+PYTHONPATH=:${ROOT}texturemodel/code/${PYTHONPATH}
+
+# go to folder where script is located
+cd ${ROOT}texturemodel/code/model_fitting
 
 subjects=(1 2 3 4 5 6 7 8)
  

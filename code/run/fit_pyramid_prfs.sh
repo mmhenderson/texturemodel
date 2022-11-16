@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --partition=gpu
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:0
 #SBATCH --exclude=mind-1-23
-#SBATCH --mem=48G
+#SBATCH --mem=24G
 #SBATCH --cpus-per-task=4
 #SBATCH --open-mode=append
 #SBATCH --output=./sbatch_output/output-%A-%x-%u.out 
@@ -17,12 +17,21 @@ echo $SLURM_NODELIST
 
 source ~/myenv/bin/activate
 
-cd /user_data/mmhender/texturemodel/code/model_fitting
+# change this path
+ROOT=/user_data/mmhender/
 
-subjects=(1 2 3 4 5 6 7 8)
+# put the code directory on your python path
+PYTHONPATH=:${ROOT}texturemodel/code/${PYTHONPATH}
 
-debug=0
-up_to_sess=40
+# go to folder where script is located
+cd ${ROOT}texturemodel/code/model_fitting
+
+# subjects=(1 2 3 4 5 6 7 8)
+subjects=(1)
+
+debug=1
+up_to_sess=1
+# up_to_sess=40
 
 shuffle_images_once=0
 
