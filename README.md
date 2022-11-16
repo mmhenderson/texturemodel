@@ -12,6 +12,7 @@ See our preprint at: https://www.biorxiv.org/content/10.1101/2022.09.23.509292v1
   <ul>
     <li> https://osf.io/8fsnx/
     <li> After unzipping, you should have a folder "model_fits", which can be placed inside "texturemodel".
+    <li> You should also have a folder "rois", which should be placed at: /root/nsd/rois
   </ul>
   <li>If fitting from scratch: access the fMRI dataset (NSD) and images here:
   <ul>
@@ -34,12 +35,10 @@ Running the feature extraction code requires PyTorch as well as PyrTools (https:
 
 See "code/run/extract_texture_feats.sh" for an example of how to run the feature extraction code (adjust the paths in this script for your local filesystem).
 
-If you don't want to extract the features from scratch, you can download our pre-computed features at: https://osf.io/8fsnx/
-
 ### Model fitting:
 See the scripts in "code/run/fit..." for examples of how to run fitting code (adjust the paths in these scripts for your local filesystem).
 
-To fit the models, you'll need to first download the NSD dataset, and run the feature extraction code (or download the features from OSF).
+To fit the models, you'll need to first download the NSD dataset, and run the feature extraction code.
 
 ### Other notes:
 
