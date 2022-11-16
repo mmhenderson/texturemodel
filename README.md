@@ -17,6 +17,7 @@ See our preprint at: https://www.biorxiv.org/content/10.1101/2022.09.23.509292v1
   <ul>
     <li> http://naturalscenesdataset.org/
     <li> Update path_defs.py to reflect the path where NSD is downloaded.
+    <li> Use "/code/run/prep_images.sh" to prepare the NSD images for feature extraction pipeline.
   </ul>
 </ol>
 
