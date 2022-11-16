@@ -11,7 +11,7 @@ See our preprint at: https://www.biorxiv.org/content/10.1101/2022.09.23.509292v1
   <li>If using our pre-computed model fits: download the data from OSF
   <ul>
     <li> https://osf.io/8fsnx/
-    <li> Unzip, then place the folders for each subject inside a folder "model_fits", on the same level as this repository (inside "root").
+    <li> After unzipping, you should have a folder "model_fits", which can be placed inside "texturemodel".
   </ul>
   <li>If fitting from scratch: access the fMRI dataset (NSD) and images here:
   <ul>
