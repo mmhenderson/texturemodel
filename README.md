@@ -28,7 +28,9 @@ See our preprint at: https://www.biorxiv.org/content/10.1101/2022.09.23.509292v1
 </ol>
 
 ### Feature extraction:
-The first step of the fitting procedure is to extract texture statistics features using a steerable pyramid representation. Our Python feature extraction code is directly adapted from the matlab code available at: https://github.com/freeman-lab/metamers. Running our code requires PyTorch as well as PyrTools (https://pyrtools.readthedocs.io/en/latest/). Using a GPU is recommended for speed. 
+The first step of the fitting procedure is to extract texture statistics features using a steerable pyramid representation. Our code is directly adapted from the Matlab code available at: https://github.com/freeman-lab/metamers. 
+
+Running the feature extraction code requires PyTorch as well as PyrTools (https://pyrtools.readthedocs.io/en/latest/). Using a GPU is recommended for speed. 
 
 See "code/run/extract_texture_feats.sh" for an example of how to run the feature extraction code (adjust the paths in this script for your local filesystem).
 
