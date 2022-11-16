@@ -93,13 +93,13 @@ def ncsnr_to_nc(ncsnr, average_image_reps=False, subject=None):
   
 def get_nc(subject, average_image_reps=True):
     
-    voxel_mask, voxel_index, voxel_roi, voxel_ncsnr, brain_nii_shape = \
-                roi_utils.get_voxel_roi_info(subject, volume_space=True)
-    
-    noise_ceiling = \
-        ncsnr_to_nc(voxel_ncsnr[voxel_mask], \
-                    average_image_reps=average_image_reps, \
-                    subject=subject)
+    # this is computed in roi_utils.preproc_rois()
+    if average_image_reps:
+        filename = os.path.join(default_paths.nsd_rois_root, 'S%d_noise_ceiling_avgreps.npy'%subject)
+    else:
+        filename = os.path.join(default_paths.nsd_rois_root, 'S%d_noise_ceiling_noavg.npy'%subject)
+        
+    noise_ceiling = np.load(filename)/100
     
     return noise_ceiling
 

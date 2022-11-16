@@ -31,14 +31,8 @@ def get_substr(out):
 
 def get_noise_ceiling(out):
     
-    if 'average_image_reps' in out.keys():
-        average_image_reps=out['average_image_reps']
-    else:
-        average_image_reps=False  
-    voxel_ncsnr = out['voxel_ncsnr'][out['voxel_index']]  
-    noise_ceiling = nsd_utils.ncsnr_to_nc(voxel_ncsnr, \
-                                              average_image_reps=average_image_reps, \
-                                              subject=out['subject'])/100       
+    noise_ceiling = nsd_utils.get_nc(subject=out['subject'], \
+                                     average_image_reps = out['average_image_reps']) 
     return noise_ceiling
 
 def barplot_R2_all(fitting_type, out, roi_def, ylims = [-0.05, 0.30], \

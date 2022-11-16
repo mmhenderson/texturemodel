@@ -25,11 +25,13 @@ class nsd_roi_def():
     
     def __init__(self, subject, volume_space=True, use_kastner_areas = True, \
                  areas_include=None, areas_merge = None, \
-                 remove_ret_overlap = False, remove_categ_overlap=False):
+                 remove_ret_overlap = False, remove_categ_overlap=False, \
+                 load_preproc=True):
         
         self.subject=subject
         self.volume_space=volume_space
         self.use_kastner_areas=use_kastner_areas
+        self.load_preproc=load_preproc
         
         self.__init_names__()        
         self.__init_labels__()
@@ -83,7 +85,7 @@ class nsd_roi_def():
             
     def __init_names__(self):
         
-        ret, face, place, body = load_roi_label_mapping(self.subject)
+        ret, face, place, body = load_roi_label_mapping(self.subject, load_preproc=self.load_preproc)
         self.face_names = face[1]
         self.place_names = place[1]
         self.body_names = body[1]
@@ -119,7 +121,8 @@ class nsd_roi_def():
         voxel_mask, voxel_index, voxel_roi, voxel_ncsnr, brain_nii_shape = \
                     get_voxel_roi_info(self.subject, \
                                        volume_space=self.volume_space, \
-                                       use_kastner_areas=self.use_kastner_areas)
+                                       use_kastner_areas=self.use_kastner_areas, 
+                                       load_preproc=self.load_preproc)
         self.voxel_mask = voxel_mask
         self.nii_shape = brain_nii_shape
         
@@ -295,7 +298,8 @@ class multi_subject_roi_def(nsd_roi_def):
     
     def __init__(self, subjects, volume_space=True, use_kastner_areas = True, \
                  areas_include=None, areas_merge=None, \
-                 remove_ret_overlap = False, remove_categ_overlap=False):
+                 remove_ret_overlap = False, remove_categ_overlap=False, 
+                 load_preproc=True):
      
         # first initialize object with just first subject, most of
         # the properties are same for all subs (ROI names etc.)
@@ -305,7 +309,8 @@ class multi_subject_roi_def(nsd_roi_def):
                          areas_include=areas_include, \
                          areas_merge=areas_merge, \
                          remove_ret_overlap = remove_ret_overlap, \
-                         remove_categ_overlap=remove_categ_overlap)
+                         remove_categ_overlap=remove_categ_overlap, 
+                         load_preproc=load_preproc)
         
         self.subjects = subjects
         
@@ -316,7 +321,8 @@ class multi_subject_roi_def(nsd_roi_def):
                                         areas_include=areas_include, \
                                         areas_merge=areas_merge, \
                                         remove_ret_overlap = remove_ret_overlap, \
-                                        remove_categ_overlap=remove_categ_overlap) \
+                                        remove_categ_overlap=remove_categ_overlap, 
+                                        load_preproc=load_preproc) \
                             for ss in self.subjects]
         
         self.__concat_labels__()
@@ -350,7 +356,7 @@ class multi_subject_roi_def(nsd_roi_def):
         
         
         
-def load_roi_label_mapping(subject):
+def load_roi_label_mapping(subject, load_preproc=True):
     """
     Load files (ctab) that describe the mapping from numerical labels to text labels.
     These correspond to the mask definitions of each type of ROI (either nii or mgz files).
@@ -358,89 +364,105 @@ def load_roi_label_mapping(subject):
     floc-places, and floc-bodies.
     """
     
-    filename_prf = os.path.join(default_paths.nsd_root,'nsddata','freesurfer',\
-                                'subj%02d'%subject, 'label', 'prf-visualrois.mgz.ctab')
-    names = np.array(pd.read_csv(filename_prf))
-    names = [str(name) for name in names]
-    prf_num_labels = [int(name[2:np.char.find(name,' ')]) for name in names]
-    prf_text_labels=[]
-    for name in names:
-        if np.char.find(name,'\\')>-1:
-            prf_text_labels.append(name[np.char.find(name,' ')+1:np.char.find(name,'\\')])
-        else:
-            prf_text_labels.append(name[np.char.find(name,' ')+1:np.char.find(name,"'",2)])
-   
-    filename_ret = os.path.join(default_paths.nsd_root,'nsddata','freesurfer',\
-                                'subj%02d'%subject, 'label', 'Kastner2015.mgz.ctab')
-    names = np.array(pd.read_csv(filename_ret))
-    names = [str(name) for name in names]
-    ret_num_labels = [int(name[2:np.char.find(name,' ')]) for name in names]
-    ret_text_labels=[]
-    for name in names:
-        if np.char.find(name,'\\')>-1:
-            ret_text_labels.append(name[np.char.find(name,' ')+1:np.char.find(name,'\\')])
-        else:
-            ret_text_labels.append(name[np.char.find(name,' ')+1:np.char.find(name,"'",2)])
-    
-    # kastner atlas and prf have same values/names for all shared elements, 
-    # so can just use kastner going forward.
-    assert(np.array_equal(prf_num_labels,ret_num_labels[0:len(prf_num_labels)]))
-    assert(np.array_equal(prf_text_labels,ret_text_labels[0:len(prf_text_labels)]))
-
-    filename_faces = os.path.join(default_paths.nsd_root,'nsddata','freesurfer',\
-                                  'subj%02d'%subject, 'label', 'floc-faces.mgz.ctab')
-    names = np.array(pd.read_csv(filename_faces))
-    names = [str(name) for name in names]
-    faces_num_labels = [int(name[2:np.char.find(name,' ')]) for name in names]
-    faces_text_labels=[]
-    for name in names:
-        if np.char.find(name,'\\')>-1:
-            faces_text_labels.append(name[np.char.find(name,' ')+1:np.char.find(name,'\\')])
-        else:
-            faces_text_labels.append(name[np.char.find(name,' ')+1:np.char.find(name,"'",2)])
-    
-    filename_places = os.path.join(default_paths.nsd_root,'nsddata','freesurfer',\
-                                   'subj%02d'%subject, 'label', 'floc-places.mgz.ctab')
-    names = np.array(pd.read_csv(filename_places))
-    names = [str(name) for name in names]
-    places_num_labels = [int(name[2:np.char.find(name,' ')]) for name in names]
-    places_text_labels=[]
-    for name in names:
-        if np.char.find(name,'\\')>-1:
-            places_text_labels.append(name[np.char.find(name,' ')+1:np.char.find(name,'\\')])
-        else:
-            places_text_labels.append(name[np.char.find(name,' ')+1:np.char.find(name,"'",2)])
-       
-    filename_body = os.path.join(default_paths.nsd_root,'nsddata','freesurfer',\
-                                 'subj%02d'%subject, 'label', 'floc-bodies.mgz.ctab')
-    names = np.array(pd.read_csv(filename_body))
-    names = [str(name) for name in names]
-    body_num_labels = [int(name[2:np.char.find(name,' ')]) for name in names]
-    body_text_labels=[]
-    for name in names:
-        if np.char.find(name,'\\')>-1:
-            body_text_labels.append(name[np.char.find(name,' ')+1:np.char.find(name,'\\')])
-        else:
-            body_text_labels.append(name[np.char.find(name,' ')+1:np.char.find(name,"'",2)])
-    
-    return [ret_num_labels, ret_text_labels], [faces_num_labels, faces_text_labels], \
-            [places_num_labels, places_text_labels], [body_num_labels, body_text_labels]
+    if load_preproc:
         
-def get_nii_shape(subject):
+        # if we already ran "preproc_rois", then just loading the saved output of this function from disk.
+        filename = os.path.join(default_paths.nsd_rois_root, 'S%d_roi_label_mapping.npy'%subject)
+        r = np.load(filename, allow_pickle=True).item()
+        return r['ret'], r['face'], r['place'], r['body']
+
+    else:
+
+        filename_prf = os.path.join(default_paths.nsd_root,'nsddata','freesurfer',\
+                                    'subj%02d'%subject, 'label', 'prf-visualrois.mgz.ctab')
+        names = np.array(pd.read_csv(filename_prf))
+        names = [str(name) for name in names]
+        prf_num_labels = [int(name[2:np.char.find(name,' ')]) for name in names]
+        prf_text_labels=[]
+        for name in names:
+            if np.char.find(name,'\\')>-1:
+                prf_text_labels.append(name[np.char.find(name,' ')+1:np.char.find(name,'\\')])
+            else:
+                prf_text_labels.append(name[np.char.find(name,' ')+1:np.char.find(name,"'",2)])
+
+        filename_ret = os.path.join(default_paths.nsd_root,'nsddata','freesurfer',\
+                                    'subj%02d'%subject, 'label', 'Kastner2015.mgz.ctab')
+        names = np.array(pd.read_csv(filename_ret))
+        names = [str(name) for name in names]
+        ret_num_labels = [int(name[2:np.char.find(name,' ')]) for name in names]
+        ret_text_labels=[]
+        for name in names:
+            if np.char.find(name,'\\')>-1:
+                ret_text_labels.append(name[np.char.find(name,' ')+1:np.char.find(name,'\\')])
+            else:
+                ret_text_labels.append(name[np.char.find(name,' ')+1:np.char.find(name,"'",2)])
+
+        # kastner atlas and prf have same values/names for all shared elements, 
+        # so can just use kastner going forward.
+        assert(np.array_equal(prf_num_labels,ret_num_labels[0:len(prf_num_labels)]))
+        assert(np.array_equal(prf_text_labels,ret_text_labels[0:len(prf_text_labels)]))
+
+        filename_faces = os.path.join(default_paths.nsd_root,'nsddata','freesurfer',\
+                                      'subj%02d'%subject, 'label', 'floc-faces.mgz.ctab')
+        names = np.array(pd.read_csv(filename_faces))
+        names = [str(name) for name in names]
+        faces_num_labels = [int(name[2:np.char.find(name,' ')]) for name in names]
+        faces_text_labels=[]
+        for name in names:
+            if np.char.find(name,'\\')>-1:
+                faces_text_labels.append(name[np.char.find(name,' ')+1:np.char.find(name,'\\')])
+            else:
+                faces_text_labels.append(name[np.char.find(name,' ')+1:np.char.find(name,"'",2)])
+
+        filename_places = os.path.join(default_paths.nsd_root,'nsddata','freesurfer',\
+                                       'subj%02d'%subject, 'label', 'floc-places.mgz.ctab')
+        names = np.array(pd.read_csv(filename_places))
+        names = [str(name) for name in names]
+        places_num_labels = [int(name[2:np.char.find(name,' ')]) for name in names]
+        places_text_labels=[]
+        for name in names:
+            if np.char.find(name,'\\')>-1:
+                places_text_labels.append(name[np.char.find(name,' ')+1:np.char.find(name,'\\')])
+            else:
+                places_text_labels.append(name[np.char.find(name,' ')+1:np.char.find(name,"'",2)])
+
+        filename_body = os.path.join(default_paths.nsd_root,'nsddata','freesurfer',\
+                                     'subj%02d'%subject, 'label', 'floc-bodies.mgz.ctab')
+        names = np.array(pd.read_csv(filename_body))
+        names = [str(name) for name in names]
+        body_num_labels = [int(name[2:np.char.find(name,' ')]) for name in names]
+        body_text_labels=[]
+        for name in names:
+            if np.char.find(name,'\\')>-1:
+                body_text_labels.append(name[np.char.find(name,' ')+1:np.char.find(name,'\\')])
+            else:
+                body_text_labels.append(name[np.char.find(name,' ')+1:np.char.find(name,"'",2)])
+
+        return [ret_num_labels, ret_text_labels], [faces_num_labels, faces_text_labels], \
+                [places_num_labels, places_text_labels], [body_num_labels, body_text_labels]
+        
+def get_nii_shape(subject, load_preproc=True):
     """
     Get the original shape of 3D nifti files for NSD data, for a given subject.
     """
     
-    # can load any nifti file for this subject.
-    roi_path = os.path.join(default_paths.nsd_root, 'nsddata', 'ppdata', \
-                                'subj%02d'%subject, 'func1pt8mm', 'roi')
-    prf_labels_full  = nsd_utils.load_from_nii(os.path.join(roi_path, 'prf-visualrois.nii.gz'))
-    # save the shape, so we can project back to volume space later.
-    brain_nii_shape = np.array(prf_labels_full.shape)
-    
+    if load_preproc:
+        
+        # if we already ran "preproc_rois", then just loading the saved output of this function from disk.
+        filename = os.path.join(default_paths.nsd_rois_root, 'S%d_brain_nii_shape.npy'%subject)
+        brain_nii_shape = np.load(filename)
+        
+    else:
+        # can load any nifti file for this subject.
+        roi_path = os.path.join(default_paths.nsd_root, 'nsddata', 'ppdata', \
+                                    'subj%02d'%subject, 'func1pt8mm', 'roi')
+        prf_labels_full  = nsd_utils.load_from_nii(os.path.join(roi_path, 'prf-visualrois.nii.gz'))
+        # save the shape, so we can project back to volume space later.
+        brain_nii_shape = np.array(prf_labels_full.shape)
+
     return brain_nii_shape
 
-def get_voxel_roi_info(subject, volume_space=True, use_kastner_areas=True):
+def get_voxel_roi_info(subject, volume_space=True, use_kastner_areas=True, load_preproc=True):
 
     """
     For a specified NSD subject, load all definitions of all ROIs.
@@ -469,99 +491,113 @@ def get_voxel_roi_info(subject, volume_space=True, use_kastner_areas=True):
     
     """
     
-     # First loading each ROI definitions file - lists nvoxels long, with diff numbers for each ROI.
-    if volume_space:
-
-        roi_path = os.path.join(default_paths.nsd_root, 'nsddata', 'ppdata', \
-                                'subj%02d'%subject, 'func1pt8mm', 'roi')
-       
-        nsd_general_full = nsd_utils.load_from_nii(os.path.join(roi_path, 'nsdgeneral.nii.gz')).flatten()
-            
-        prf_labels_full  = nsd_utils.load_from_nii(os.path.join(roi_path, 'prf-visualrois.nii.gz'))
-        # save the shape, so we can project back to volume space later.
-        brain_nii_shape = np.array(prf_labels_full.shape)
-        prf_labels_full = prf_labels_full.flatten()
-
-        kast_labels_full = nsd_utils.load_from_nii(os.path.join(roi_path, 'Kastner2015.nii.gz')).flatten()
-        face_labels_full = nsd_utils.load_from_nii(os.path.join(roi_path, 'floc-faces.nii.gz')).flatten()
-        place_labels_full = nsd_utils.load_from_nii(os.path.join(roi_path, 'floc-places.nii.gz')).flatten()
-        body_labels_full = nsd_utils.load_from_nii(os.path.join(roi_path, 'floc-bodies.nii.gz')).flatten()
+    if load_preproc:
         
-        # Masks of ncsnr values for each voxel 
-        ncsnr_full = nsd_utils.load_from_nii(os.path.join(default_paths.beta_root, \
-                                              'subj%02d'%subject, 'func1pt8mm', \
-                                              'betas_fithrf_GLMdenoise_RR', 'ncsnr.nii.gz')).flatten()
-    else:
-        
-        roi_path = os.path.join(default_paths.nsd_root,'nsddata', 'freesurfer', 'subj%02d'%subject, 'label')
-
-        # Surface space, concatenate the two hemispheres
-        # always go left then right, to match the data which also gets concatenated same way
-        prf_labs1 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'lh.prf-visualrois.mgz'))[:,0,0]
-        prf_labs2 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'rh.prf-visualrois.mgz'))[:,0,0]
-        prf_labels_full = np.concatenate((prf_labs1, prf_labs2), axis=0)
-
-        kast_labs1 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'lh.Kastner2015.mgz'))[:,0,0]
-        kast_labs2 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'rh.Kastner2015.mgz'))[:,0,0]
-        kast_labels_full = np.concatenate((kast_labs1, kast_labs2), axis=0)
-
-        face_labs1 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'lh.floc-faces.mgz'))[:,0,0]
-        face_labs2 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'rh.floc-faces.mgz'))[:,0,0]
-        face_labels_full = np.concatenate((face_labs1, face_labs2), axis=0)
-
-        place_labs1 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'lh.floc-places.mgz'))[:,0,0]
-        place_labs2 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'rh.floc-places.mgz'))[:,0,0]
-        place_labels_full = np.concatenate((place_labs1, place_labs2), axis=0)
-      
-        body_labs1 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'lh.floc-bodies.mgz'))[:,0,0]
-        body_labs2 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'rh.floc-bodies.mgz'))[:,0,0]
-        body_labels_full = np.concatenate((body_labs1, body_labs2), axis=0)
-      
-        # Note this part hasn't been tested
-        general_labs1 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'lh.nsdgeneral.mgz'))[:,0,0]
-        general_labs2 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'rh.nsdgeneral.mgz'))[:,0,0]
-        nsd_general_full = np.concatenate((general_labs1, general_labs2), axis=0)
-  
-        # Masks of ncsnr values for each voxel 
-        n1 = nsd_utils.load_from_mgz(os.path.join(default_paths.beta_root, \
-                                                  'subj%02d'%subject, 'nativesurface',\
-                                                  'betas_fithrf_GLMdenoise_RR', 'lh.ncsnr.mgh')).flatten()
-        n2 = nsd_utils.load_from_mgz(os.path.join(default_paths.beta_root, 'subj%02d'%subject, \
-                                                  'nativesurface','betas_fithrf_GLMdenoise_RR',\
-                                                  'rh.ncsnr.mgh')).flatten()
-        ncsnr_full = np.concatenate((n1, n2), axis=0)
-  
-        brain_nii_shape = None
-
-    # boolean masks of which voxels had definitions in each of these naming schemes
-    has_general_label = (nsd_general_full>0).astype(bool)
-    has_prf_label = (prf_labels_full>0).astype(bool)
-    has_kast_label = (kast_labels_full>0).astype(bool)
-    has_face_label = (face_labels_full>0).astype(bool)
-    has_place_label = (place_labels_full>0).astype(bool)
-    has_body_label = (body_labels_full>0).astype(bool)
+        # if we already ran "preproc_rois", then just loading the saved output of this function from disk.
+        if use_kastner_areas:
+            filename = os.path.join(default_paths.nsd_rois_root, 'S%d_voxel_roi_info_withkastner.npy'%subject)
+        else:
+            filename = os.path.join(default_paths.nsd_rois_root, 'S%d_voxel_roi_info.npy'%subject)
+        r = np.load(filename, allow_pickle=True).item()    
+        voxel_mask = r['voxel_mask']; voxel_idx = r['voxel_idx']
+        roi_labels_retino = r['roi_labels_retino']; roi_labels_face = r['roi_labels_face']
+        roi_labels_place = r['roi_labels_place']; roi_labels_body = r['roi_labels_body']
+        ncsnr_full = r['ncsnr_full']; brain_nii_shape = r['brain_nii_shape']
     
-    # this is the mask of all the voxels that we want to use for analysis.
-    # including any voxels that have ROI defs, OR are in the nsdgeneral mask.
-    voxel_mask = has_general_label | has_prf_label | has_kast_label | \
-                    has_face_label | has_place_label | has_body_label
-    voxel_idx = np.where(voxel_mask) # numerical indices into the big array
-    
-    # Make our definitions of retinotopic ROIs
-    if use_kastner_areas:
-        # starting with the Kastner atlas.
-        roi_labels_retino = np.copy(kast_labels_full)    
-        # Partially overwrite these defs with pRF mapping defs, which are more 
-        # accurate when they exist. The numbers have same meaning across these 
-        # sets, so this is ok. 
-        roi_labels_retino[has_prf_label] = prf_labels_full[has_prf_label]
     else:
-        roi_labels_retino = prf_labels_full;
-        
-    roi_labels_face = face_labels_full
-    roi_labels_place = place_labels_full
-    roi_labels_body = body_labels_full
- 
+        # First loading each ROI definitions file - lists nvoxels long, with diff numbers for each ROI.
+        if volume_space:
+
+            roi_path = os.path.join(default_paths.nsd_root, 'nsddata', 'ppdata', \
+                                    'subj%02d'%subject, 'func1pt8mm', 'roi')
+
+            nsd_general_full = nsd_utils.load_from_nii(os.path.join(roi_path, 'nsdgeneral.nii.gz')).flatten()
+
+            prf_labels_full  = nsd_utils.load_from_nii(os.path.join(roi_path, 'prf-visualrois.nii.gz'))
+            # save the shape, so we can project back to volume space later.
+            brain_nii_shape = np.array(prf_labels_full.shape)
+            prf_labels_full = prf_labels_full.flatten()
+
+            kast_labels_full = nsd_utils.load_from_nii(os.path.join(roi_path, 'Kastner2015.nii.gz')).flatten()
+            face_labels_full = nsd_utils.load_from_nii(os.path.join(roi_path, 'floc-faces.nii.gz')).flatten()
+            place_labels_full = nsd_utils.load_from_nii(os.path.join(roi_path, 'floc-places.nii.gz')).flatten()
+            body_labels_full = nsd_utils.load_from_nii(os.path.join(roi_path, 'floc-bodies.nii.gz')).flatten()
+
+            # Masks of ncsnr values for each voxel 
+            ncsnr_full = nsd_utils.load_from_nii(os.path.join(default_paths.beta_root, \
+                                                  'subj%02d'%subject, 'func1pt8mm', \
+                                                  'betas_fithrf_GLMdenoise_RR', 'ncsnr.nii.gz')).flatten()
+        else:
+
+            roi_path = os.path.join(default_paths.nsd_root,'nsddata', 'freesurfer', 'subj%02d'%subject, 'label')
+
+            # Surface space, concatenate the two hemispheres
+            # always go left then right, to match the data which also gets concatenated same way
+            prf_labs1 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'lh.prf-visualrois.mgz'))[:,0,0]
+            prf_labs2 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'rh.prf-visualrois.mgz'))[:,0,0]
+            prf_labels_full = np.concatenate((prf_labs1, prf_labs2), axis=0)
+
+            kast_labs1 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'lh.Kastner2015.mgz'))[:,0,0]
+            kast_labs2 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'rh.Kastner2015.mgz'))[:,0,0]
+            kast_labels_full = np.concatenate((kast_labs1, kast_labs2), axis=0)
+
+            face_labs1 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'lh.floc-faces.mgz'))[:,0,0]
+            face_labs2 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'rh.floc-faces.mgz'))[:,0,0]
+            face_labels_full = np.concatenate((face_labs1, face_labs2), axis=0)
+
+            place_labs1 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'lh.floc-places.mgz'))[:,0,0]
+            place_labs2 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'rh.floc-places.mgz'))[:,0,0]
+            place_labels_full = np.concatenate((place_labs1, place_labs2), axis=0)
+
+            body_labs1 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'lh.floc-bodies.mgz'))[:,0,0]
+            body_labs2 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'rh.floc-bodies.mgz'))[:,0,0]
+            body_labels_full = np.concatenate((body_labs1, body_labs2), axis=0)
+
+            # Note this part hasn't been tested
+            general_labs1 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'lh.nsdgeneral.mgz'))[:,0,0]
+            general_labs2 = nsd_utils.load_from_mgz(os.path.join(roi_path, 'rh.nsdgeneral.mgz'))[:,0,0]
+            nsd_general_full = np.concatenate((general_labs1, general_labs2), axis=0)
+
+            # Masks of ncsnr values for each voxel 
+            n1 = nsd_utils.load_from_mgz(os.path.join(default_paths.beta_root, \
+                                                      'subj%02d'%subject, 'nativesurface',\
+                                                      'betas_fithrf_GLMdenoise_RR', 'lh.ncsnr.mgh')).flatten()
+            n2 = nsd_utils.load_from_mgz(os.path.join(default_paths.beta_root, 'subj%02d'%subject, \
+                                                      'nativesurface','betas_fithrf_GLMdenoise_RR',\
+                                                      'rh.ncsnr.mgh')).flatten()
+            ncsnr_full = np.concatenate((n1, n2), axis=0)
+
+            brain_nii_shape = None
+
+        # boolean masks of which voxels had definitions in each of these naming schemes
+        has_general_label = (nsd_general_full>0).astype(bool)
+        has_prf_label = (prf_labels_full>0).astype(bool)
+        has_kast_label = (kast_labels_full>0).astype(bool)
+        has_face_label = (face_labels_full>0).astype(bool)
+        has_place_label = (place_labels_full>0).astype(bool)
+        has_body_label = (body_labels_full>0).astype(bool)
+
+        # this is the mask of all the voxels that we want to use for analysis.
+        # including any voxels that have ROI defs, OR are in the nsdgeneral mask.
+        voxel_mask = has_general_label | has_prf_label | has_kast_label | \
+                        has_face_label | has_place_label | has_body_label
+        voxel_idx = np.where(voxel_mask) # numerical indices into the big array
+
+        # Make our definitions of retinotopic ROIs
+        if use_kastner_areas:
+            # starting with the Kastner atlas.
+            roi_labels_retino = np.copy(kast_labels_full)    
+            # Partially overwrite these defs with pRF mapping defs, which are more 
+            # accurate when they exist. The numbers have same meaning across these 
+            # sets, so this is ok. 
+            roi_labels_retino[has_prf_label] = prf_labels_full[has_prf_label]
+        else:
+            roi_labels_retino = prf_labels_full;
+
+        roi_labels_face = face_labels_full
+        roi_labels_place = place_labels_full
+        roi_labels_body = body_labels_full
+
     return voxel_mask, voxel_idx, [roi_labels_retino, roi_labels_face, roi_labels_place, roi_labels_body], \
                 ncsnr_full, brain_nii_shape
 
@@ -575,3 +611,75 @@ def view_data(vol_shape, idx_mask, data_vol, order='C', save_to=None):
     if save_to:
         nib.save(nib.Nifti1Image(view_vol, affine=np.eye(4)), save_to)
     return view_vol
+
+
+def preproc_rois():
+    
+    # this essentially loads all the relevant ROI information from files in the NSD folder, 
+    # and saves to some smaller files that are in my user_data folder.
+    # this way you can access the ROI defs without having the whole NSD folder available.
+    
+    subjects = np.arange(1,9)
+    
+    for subject in subjects:
+
+        [ret_num_labels, ret_text_labels], [faces_num_labels, faces_text_labels], \
+                    [places_num_labels, places_text_labels], [body_num_labels, body_text_labels] = \
+            load_roi_label_mapping(subject, load_preproc=False)
+
+        save_filename = os.path.join(default_paths.nsd_rois_root, 'S%d_roi_label_mapping.npy'%subject)
+        print(save_filename)
+        np.save(save_filename, {'ret': [ret_num_labels, ret_text_labels], \
+                                'face': [faces_num_labels, faces_text_labels], \
+                                'place': [places_num_labels, places_text_labels], \
+                                'body': [body_num_labels, body_text_labels]}
+               )
+
+        brain_nii_shape = get_nii_shape(subject, load_preproc=False)
+        save_filename = os.path.join(default_paths.nsd_rois_root, 'S%d_brain_nii_shape.npy'%subject)
+        print(save_filename)
+        np.save(save_filename, brain_nii_shape)
+
+        voxel_mask, voxel_idx, [roi_labels_retino, roi_labels_face, roi_labels_place, roi_labels_body], \
+                    ncsnr_full, brain_nii_shape = \
+            get_voxel_roi_info(subject, use_kastner_areas=False, load_preproc=False)
+        save_filename = os.path.join(default_paths.nsd_rois_root, 'S%d_voxel_roi_info.npy'%subject)
+        print(save_filename)
+        np.save(save_filename, {'voxel_mask': voxel_mask, \
+                                'voxel_idx': voxel_idx, \
+                                'roi_labels_retino': roi_labels_retino, \
+                                'roi_labels_face': roi_labels_face, \
+                                'roi_labels_place': roi_labels_place, \
+                                'roi_labels_body': roi_labels_body, \
+                                'ncsnr_full': ncsnr_full, \
+                                'brain_nii_shape': brain_nii_shape, \
+                               }
+               )
+
+        voxel_mask, voxel_idx, [roi_labels_retino, roi_labels_face, roi_labels_place, roi_labels_body], \
+                    ncsnr_full, brain_nii_shape = \
+            get_voxel_roi_info(subject, use_kastner_areas=True, load_preproc=False)
+        save_filename = os.path.join(default_paths.nsd_rois_root, 'S%d_voxel_roi_info_withkastner.npy'%subject)
+        print(save_filename)
+        np.save(save_filename, {'voxel_mask': voxel_mask, \
+                                'voxel_idx': voxel_idx, \
+                                'roi_labels_retino': roi_labels_retino, \
+                                'roi_labels_face': roi_labels_face, \
+                                'roi_labels_place': roi_labels_place, \
+                                'roi_labels_body': roi_labels_body, \
+                                'ncsnr_full': ncsnr_full, \
+                                'brain_nii_shape': brain_nii_shape, \
+                               }
+               )
+        
+        noise_ceiling = \
+            nsd_utils.ncsnr_to_nc(ncsnr_full[voxel_mask], average_image_reps=True, subject=subject)
+        save_filename = os.path.join(default_paths.nsd_rois_root, 'S%d_noise_ceiling_avgreps.npy'%subject)
+        print(save_filename)
+        np.save(save_filename, noise_ceiling)
+        
+        noise_ceiling = \
+            nsd_utils.ncsnr_to_nc(ncsnr_full[voxel_mask], average_image_reps=False, subject=subject)
+        save_filename = os.path.join(default_paths.nsd_rois_root, 'S%d_noise_ceiling_noavg.npy'%subject)
+        print(save_filename)
+        np.save(save_filename, noise_ceiling)

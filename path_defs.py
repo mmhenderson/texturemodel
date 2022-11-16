@@ -14,4 +14,5 @@ project_name = 'texturemodel'
 # Set path to the full NSD data repository (this is where the beta weights are stored)
 # http://naturalscenesdataset.org/
 # This is only needed if you want to fit from scratch
-nsd_path = '/lab_data/tarrlab/common/datasets/NSD'   
+# nsd_path = '/lab_data/tarrlab/common/datasets/NSD'   
+nsd_path = ''

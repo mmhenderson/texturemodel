@@ -12,6 +12,7 @@ project_name = path_defs.project_name
 # Where we are keeping the preprocessed NSD stimuli/labeling data
 stim_root = os.path.join(root, 'nsd','stimuli')    
 stim_labels_root = os.path.join(root, 'nsd','labels')    
+nsd_rois_root = os.path.join(root, 'nsd', 'rois')
 
 # Where to save model fits
 save_fits_path = os.path.join(root, project_name, 'model_fits')
