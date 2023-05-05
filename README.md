@@ -1,5 +1,9 @@
 Code to construct/analyze a texture statistics encoding model for fMRI data.
-See our preprint at: https://www.biorxiv.org/content/10.1101/2022.09.23.509292v1
+
+Related to our paper:
+
+Henderson, M.M., Tarr, M.J., & Wehbe, L. (2023). A texture statistics encoding model reveals hierarchical feature selectivity across human visual cortex. <i>Journal of Neuroscience</i>. https://doi.org/10.1523/JNEUROSCI.1822-22.2023
+
 
 ### Setup instructions:
 <ol>
